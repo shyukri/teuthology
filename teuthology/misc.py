@@ -1104,22 +1104,11 @@ def get_system_type(remote, distro=False):
     """
     Return this system type (deb or rpm) or Distro.
     """
-    r = remote.run(
-        args=[
-            'sudo', 'lsb_release', '-is',
-        ],
-        stdout=StringIO(),
-    )
-    system_value = r.stdout.getvalue().strip()
-    log.debug("System to be installed: %s" % system_value)
+    dist_info = remote.distro
+    log.debug("System to be installed: %s" % dist_info.distributor)
     if distro:
-        return system_value.lower()
-    if system_value in ['Ubuntu', 'Debian']:
-        return "deb"
-    if system_value in ['CentOS', 'Fedora', 'RedHatEnterpriseServer',
-                        'openSUSE project', 'SUSE LINUX']:
-        return "rpm"
-    return system_value
+        return dist_info.name
+    return dist_info.package_type
 
 
 def get_distro(ctx):
