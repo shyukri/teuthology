@@ -17,7 +17,7 @@ def run_one_task(taskname, **kwargs):
     # Teuthology configs may refer to modules like ceph_deploy as ceph-deploy
     submod = submod.replace('-', '_')
 
-    parent = __import__('teuthology.task', globals(), locals(), [submod], 0)
+    parent = __import__('tasks', globals(), locals(), [submod], 0)
     try:
         mod = getattr(parent, submod)
     except AttributeError:
@@ -83,7 +83,7 @@ def run_tasks(tasks, ctx):
             ctx.summary['sentry_event'] = event_url
 
         if ctx.config.get('interactive-on-error'):
-            from .task import interactive
+            from tasks import interactive
             log.warning('Saw failure, going into interactive mode...')
             interactive.task(ctx=ctx, config=None)
         # Throughout teuthology, (x,) = y has been used to assign values
@@ -115,7 +115,7 @@ def run_tasks(tasks, ctx):
                         exc_info = sys.exc_info()
 
                     if ctx.config.get('interactive-on-error'):
-                        from .task import interactive
+                        from tasks import interactive
                         log.warning(
                             'Saw failure, going into interactive mode...')
                         interactive.task(ctx=ctx, config=None)

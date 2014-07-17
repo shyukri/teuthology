@@ -17,9 +17,9 @@ from .misc import get_user
 from .misc import read_config
 from .misc import reconnect
 from .parallel import parallel
-from .task import install as install_task
-from .task.internal import check_lock
-from .task.internal import connect
+from tasks import install as install_task
+from tasks.internal import check_lock
+from tasks.internal import connect
 
 log = logging.getLogger(__name__)
 
