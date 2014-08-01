@@ -1,5 +1,4 @@
 check-locks: false
-test_user: kapil
 roles:
 - [mon.0, osd.0]
 
@@ -8,4 +7,4 @@ tasks:
 - ceph:
 
 targets:
-  cephdeploy@teuthida-1: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDAdqLxXX3iridv2vMQGR6ZV8itvqblUsN/8yAvd7MBylLiC3CmmmVg2Dez0I/ybvfQTnOOUNwr+sT79Nt+sHTJvgMi9X7n9CqUjUtdWEqnjs6izLn9nutEJfpXPc/LMGjmDZmGmRI+sA2WVibzBe3DFtPnxDusZoKGzZnogFyIJ8qeRJVyE2IRGhcK2J8Lho/eNgb0TL88PA7O9hgyruWhD4GRCPFISTIZM9TyV6nuWwqHxQ1I+lDRVE5kg7uHwhtP1wNmbbgUFDZVQn1piYe0QnhTM6q0Sa90jiLDPdXVyjzZCoSdQfObwf3A+wFYuoVLuifsz4M2Q92PvHZT1HOP
+  jenkins@teuthida-1: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDAdqLxXX3iridv2vMQGR6ZV8itvqblUsN/8yAvd7MBylLiC3CmmmVg2Dez0I/ybvfQTnOOUNwr+sT79Nt+sHTJvgMi9X7n9CqUjUtdWEqnjs6izLn9nutEJfpXPc/LMGjmDZmGmRI+sA2WVibzBe3DFtPnxDusZoKGzZnogFyIJ8qeRJVyE2IRGhcK2J8Lho/eNgb0TL88PA7O9hgyruWhD4GRCPFISTIZM9TyV6nuWwqHxQ1I+lDRVE5kg7uHwhtP1wNmbbgUFDZVQn1piYe0QnhTM6q0Sa90jiLDPdXVyjzZCoSdQfObwf3A+wFYuoVLuifsz4M2Q92PvHZT1HOP
