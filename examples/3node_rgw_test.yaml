@@ -1,0 +1,24 @@
+check-locks: false
+interactive-on-error: true
+overrides:
+  ceph:
+    fs: xfs
+roles:
+- - mon.a
+  - mon.c
+  - osd.0
+- - mon.b
+  - mds.a
+  - osd.1
+- - client.0
+tasks:
+- install:
+- ceph: null
+- rgw:
+  - client.0
+- interactive:
+
+targets:
+  ubuntu@test1.example.org: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC6gDwQSCHNs2IOUz1JWmr6HwYq1q4eEpSCruBtgLRjXCGkItq8VHalEMfMDzWRkmjMmKCtT2e/IyR89is3eN9SSfXXhfvKZkE8LngRSPhajK9Ay2S3yGPwgqk41yj+W6Fqn1c4pyz3424jG1vvWBXE+amwpS8p6wH2AN7HR2ec+pHgoI9PYK5e3e1yOevtJFx8wtGObE5J4ZIaMnLBRlYhmCfwb9VIvRgr20+qIriSB1zH2pHk+teyDoJyKmYjjjOnqdmrT4iDfKVPv2fWA189OExFT2DwOCAfcU8wqzZIl7DeYE0bZdK/WzXhsr/U+hCQpeGDlJ6l5tB/bilR+ZeR
+  ubuntu@test2.example.org: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCxn6VncenXZDNzhVxgall/4+/G/VWIAvljiEHSzvYSw02DEp0rdCp7ZOkUY2c43P2ucVS33/8MwpLDpUrfp4o6hX2pm/7PtP9AkCqcz37UAK4zNmrGHLuag6UbEdgGJ8CL+S2YHsux4Mo+Wd8eXnBd9yYqvB7Bn7GU+JloAglhBd0Uaukoa4720+DdNbZJ1TceuHNgnp8F98RzfDp6jceQjRmUYKFfPrvwgYBtsTF6s/Iw+xtviYEhPONCsTXz8/f/3vMV54SOEvUfEHDNYa5hjLfJNG1JHHaArWWDN4s1/4MtqgO5duIQsLWvQpKzL33HEGfIisi4dtfayqi+o0D5 
+  ubuntu@test3.example.org: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDeijCShXkFriAVRqVCVewzy6PRf0prt8BOr4L+0SBttJGFAtVD8L5vI18zNMeljVcYOgNCAU65lvmySPnBQp9C0M1iuFFl1/0LaXJn1iREyV/qB2bpd3Fa7Epd0+cdjcUmfJk9fv+SdsrWv3/y8oTMhedp8olRI0a75NPV9IRC7NQ6WLV57f3xpA4YWGwdivYwZN88kDhIvsy/iHMXrcpfG1T5WxTKbTmhcvRs5G/RQFkL5GJngPwrhTzy9/YFdscT5CjA/KbczbR1/clGTCdkPbZfsCnYioMucDLFrnm41k6jhoRsZJ0+cMHqp9Wg1bE9Du+zlqvsoPJtDqaTHC79
