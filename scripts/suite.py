@@ -3,8 +3,8 @@ import docopt
 import teuthology.suite
 
 doc = """
-usage: teuthology-suite [-h]
-       teuthology-suite  --suite <suite> [options] [<config_yaml>...]
+usage: teuthology-suite --help
+       teuthology-suite --suite <suite> [options] [<config_yaml>...]
 
 Run a suite of ceph integration tests. A suite is a directory containing
 facets. A facet is a directory containing config snippets. Running a suite
@@ -34,8 +34,8 @@ Standard arguments:
                               'gcov', 'notcmalloc')
                               [default: basic]
   -t <branch>, --teuthology-branch <branch>
-                              The teuthology branch to run against. Defaults to
-                              using the ceph branch.
+                              The teuthology branch to run against.
+                              [default: master]
   -m <type>, --machine-type <type>
                               Machine type [default: plana]
   -d <distro>, --distro <distro>
@@ -65,6 +65,8 @@ Scheduler arguments:
   --timeout <timeout>         How long, in seconds, to wait for jobs to finish
                               before sending email. This does not kill jobs.
                               [default: 32400]
+  --filter <string>           Only run jobs containing the string specified.
+  --filter-out <string>       Do not run jobs containing the string specified.
 
 """
 

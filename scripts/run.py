@@ -16,6 +16,12 @@ def parse_args():
         help='be more verbose',
     )
     parser.add_argument(
+        '--version',
+        action='version',
+        version='%s' % teuthology.__version__,
+        help='the current installed version of teuthology',
+        )
+    parser.add_argument(
         'config',
         metavar='CONFFILE',
         nargs='+',
@@ -68,6 +74,10 @@ def parse_args():
         '--name',
         metavar='NAME',
         help='name for this teuthology run',
+    )
+    parser.add_argument(
+        '--suite-path',
+        help='Location of ceph-qa-suite on disk. If not specified, it will be fetched',  # noqa
     )
 
     return parser.parse_args()

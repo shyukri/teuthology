@@ -1,4 +1,3 @@
-import fcntl
 import logging
 import os
 import subprocess
@@ -14,9 +13,10 @@ from . import beanstalk
 from . import report
 from . import safepath
 from .config import config as teuth_config
+from .exceptions import BranchNotFoundError
 from .kill import kill_job
 from .misc import read_config
-from .repo_utils import enforce_repo_state, BranchNotFoundError
+from .repo_utils import fetch_qa_suite, fetch_teuthology
 
 log = logging.getLogger(__name__)
 start_time = datetime.utcnow()
@@ -53,83 +53,6 @@ def install_except_hook():
     sys.excepthook = log_exception
 
 
-class filelock(object):
-    # simple flock class
-    def __init__(self, fn):
-        self.fn = fn
-        self.fd = None
-
-    def acquire(self):
-        assert not self.fd
-        self.fd = file(self.fn, 'w')
-        fcntl.lockf(self.fd, fcntl.LOCK_EX)
-
-    def release(self):
-        assert self.fd
-        fcntl.lockf(self.fd, fcntl.LOCK_UN)
-        self.fd = None
-
-
-def fetch_teuthology_branch(branch):
-    """
-    Make sure we have the correct teuthology branch checked out and up-to-date
-
-    :param branch: The branche we want
-    :returns:      The destination path
-    """
-    src_base_path = teuth_config.src_base_path
-    dest_path = os.path.join(src_base_path, 'teuthology_' + branch)
-    # only let one worker create/update the checkout at a time
-    lock = filelock(dest_path.rstrip('/') + '.lock')
-    lock.acquire()
-    try:
-        teuthology_git_upstream = teuth_config.ceph_git_base_url + \
-            'teuthology.git'
-        enforce_repo_state(teuthology_git_upstream, dest_path, branch)
-
-        log.debug("Bootstrapping %s", dest_path)
-        # This magic makes the bootstrap script not attempt to clobber an
-        # existing virtualenv. But the branch's bootstrap needs to actually
-        # check for the NO_CLOBBER variable.
-        env = os.environ.copy()
-        env['NO_CLOBBER'] = '1'
-        cmd = './bootstrap'
-        boot_proc = subprocess.Popen(cmd, shell=True, cwd=dest_path, env=env,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT)
-        returncode = boot_proc.wait()
-        if returncode != 0:
-            for line in boot_proc.stdout.readlines():
-                log.warn(line.strip())
-        log.info("Bootstrap exited with status %s", returncode)
-
-    finally:
-        lock.release()
-
-    return dest_path
-
-
-def fetch_qa_suite(branch):
-    """
-    Make sure ceph-qa-suite is checked out.
-
-    :param branch: The branch to fetch
-    :returns:      The destination path
-    """
-    src_base_path = teuth_config.src_base_path
-    dest_path = os.path.join(src_base_path, 'ceph-qa-suite_' + branch)
-    qa_suite_url = os.path.join(teuth_config.ceph_git_base_url,
-                                'ceph-qa-suite')
-    # only let one worker create/update the checkout at a time
-    lock = filelock(dest_path.rstrip('/') + '.lock')
-    lock.acquire()
-    try:
-        enforce_repo_state(qa_suite_url, dest_path, branch)
-    finally:
-        lock.release()
-    return dest_path
-
-
 def main(ctx):
     loglevel = logging.INFO
     if ctx.verbose:
@@ -138,7 +61,7 @@ def main(ctx):
 
     log_file_path = os.path.join(ctx.log_dir, 'worker.{tube}.{pid}'.format(
         pid=os.getpid(), tube=ctx.tube,))
-    setup_log_file(log, log_file_path)
+    setup_log_file(log_file_path)
 
     install_except_hook()
 
@@ -155,6 +78,9 @@ def main(ctx):
     connection = beanstalk.connect()
     beanstalk.watch_tube(connection, ctx.tube)
     result_proc = None
+
+    fetch_teuthology('master')
+    fetch_qa_suite('master')
 
     while True:
         # Check to see if we have a teuthology-results process hanging around
@@ -190,13 +116,13 @@ def main(ctx):
         job_config['teuthology_branch'] = teuthology_branch
 
         try:
-            teuth_path = fetch_teuthology_branch(branch=teuthology_branch)
+            teuth_path = fetch_teuthology(branch=teuthology_branch)
             # For the teuthology tasks, we look for suite_branch, and if we
             # don't get that, we look for branch, and fall back to 'master'.
             # last-in-suite jobs don't have suite_branch or branch set.
             ceph_branch = job_config.get('branch', 'master')
             suite_branch = job_config.get('suite_branch', ceph_branch)
-            suite_path = fetch_qa_suite(suite_branch)
+            job_config['suite_path'] = fetch_qa_suite(suite_branch)
         except BranchNotFoundError:
             log.exception(
                 "Branch not found; throwing job away")
@@ -236,7 +162,7 @@ def main(ctx):
             log.info('Creating archive dir %s', archive_path_full)
             safepath.makedirs(ctx.archive_dir, safe_archive)
             log.info('Running job %d', job.jid)
-            run_job(job_config, teuth_bin_path, suite_path)
+            run_job(job_config, teuth_bin_path)
         job.delete()
 
 
@@ -295,7 +221,8 @@ def run_with_watchdog(process, job_config):
         report.try_push_job_info(job_info, dict(status='dead'))
 
 
-def run_job(job_config, teuth_bin_path, suite_path):
+def run_job(job_config, teuth_bin_path):
+    suite_path = job_config['suite_path']
     arg = [
         os.path.join(teuth_bin_path, 'teuthology'),
     ]

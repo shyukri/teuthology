@@ -19,7 +19,8 @@ from tempfile import NamedTemporaryFile
 import teuthology
 from . import lock
 from .config import config, JobConfig
-from .repo_utils import enforce_repo_state, BranchNotFoundError
+from .exceptions import BranchNotFoundError
+from .repo_utils import fetch_qa_suite, fetch_teuthology
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,8 @@ def main(args):
     if email:
         config.results_email = email
     timeout = args['--timeout']
+    filter_in = args['--filter']
+    filter_out = args['--filter-out']
 
     name = make_run_name(suite, ceph_branch, kernel_branch, kernel_flavor,
                          machine_type)
@@ -60,8 +63,7 @@ def main(args):
     if suite_dir:
         suite_repo_path = suite_dir
     else:
-        suite_repo_path = fetch_suite_repo(job_config.suite_branch,
-                                           test_name=name)
+        suite_repo_path = fetch_repos(job_config.suite_branch, test_name=name)
 
     job_config.name = name
     job_config.priority = priority
@@ -83,6 +85,8 @@ def main(args):
                          timeout=timeout,
                          dry_run=dry_run,
                          verbose=verbose,
+                         filter_in=filter_in,
+                         filter_out=filter_out,
                          )
     os.remove(base_yaml_path)
 
@@ -106,7 +110,7 @@ def make_run_name(suite, ceph_branch, kernel_branch, kernel_flavor,
     )
 
 
-def fetch_suite_repo(branch, test_name):
+def fetch_repos(branch, test_name):
     """
     Fetch the suite repo (and also the teuthology repo) so that we can use it
     to build jobs. Repos are stored in ~/src/.
@@ -117,30 +121,15 @@ def fetch_suite_repo(branch, test_name):
     for test scheduling, regardless of what teuthology branch is requested for
     testing.
 
-    :returns: The path to the repo on disk
+    :returns: The path to the suite repo on disk
     """
-    src_base_path = config.src_base_path
-    if not os.path.exists(src_base_path):
-        os.mkdir(src_base_path)
-    suite_repo_path = os.path.join(src_base_path,
-                                   'ceph-qa-suite_' + branch)
     try:
         # When a user is scheduling a test run from their own copy of
         # teuthology, let's not wreak havoc on it.
         if config.automated_scheduling:
-            enforce_repo_state(
-                repo_url=os.path.join(config.ceph_git_base_url,
-                                      'teuthology.git'),
-                dest_path=os.path.join(src_base_path, 'teuthology'),
-                branch='master',
-                remove_on_error=False,
-            )
-        enforce_repo_state(
-            repo_url=os.path.join(config.ceph_git_base_url,
-                                  'ceph-qa-suite.git'),
-            dest_path=suite_repo_path,
-            branch=branch,
-        )
+            # We use teuthology's master branch in all cases right now
+            fetch_teuthology('master')
+        suite_repo_path = fetch_qa_suite(branch)
     except BranchNotFoundError as exc:
         schedule_fail(message=str(exc), name=test_name)
     return suite_repo_path
@@ -183,7 +172,7 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
 
     # Get the ceph package version
     ceph_version = package_version_for_hash(ceph_hash, kernel_flavor,
-                                            machine_type)
+                                            distro, machine_type)
     if not ceph_version:
         schedule_fail("Packages for ceph version '{ver}' not found".format(
             ver=ceph_version))
@@ -239,7 +228,8 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
 
 
 def prepare_and_schedule(job_config, suite_repo_path, base_yaml_paths, limit,
-                         num, timeout, dry_run, verbose):
+                         num, timeout, dry_run, verbose,
+                         filter_in, filter_out):
     """
     Puts together some "base arguments" with which to execute
     teuthology-schedule for each job, then passes them and other parameters to
@@ -278,6 +268,8 @@ def prepare_and_schedule(job_config, suite_repo_path, base_yaml_paths, limit,
         arch=arch,
         limit=limit,
         dry_run=dry_run,
+        filter_in=filter_in,
+        filter_out=filter_out,
         )
 
     if job_config.email and num_jobs:
@@ -449,6 +441,8 @@ def schedule_suite(job_config,
                    arch,
                    limit=0,
                    dry_run=True,
+                   filter_in=None,
+                   filter_out=None,
                    ):
     """
     schedule one suite.
@@ -460,8 +454,7 @@ def schedule_suite(job_config,
     log.debug('Suite %s in %s' % (suite_name, path))
     configs = [(combine_path(suite_name, item[0]), item[1]) for item in
                build_matrix(path)]
-    job_count = len(configs)
-    log.info('Suite %s in %s generated %d jobs' % (
+    log.info('Suite %s in %s generated %d jobs (not yet filtered)' % (
         suite_name, path, len(configs)))
 
     for description, fragment_paths in configs:
@@ -470,6 +463,15 @@ def schedule_suite(job_config,
                 'Stopped after {limit} jobs due to --limit={limit}'.format(
                     limit=limit))
             break
+        if filter_in:
+            if not filter_in in description:
+                if all([x.find(filter_in) < 0 for x in fragment_paths]):
+                    continue
+        if filter_out:
+            if filter_out in description or any([filter_out in z
+                    for z in fragment_paths]):
+                continue
+
         raw_yaml = '\n'.join([file(a, 'r').read() for a in fragment_paths])
 
         parsed_yaml = yaml.load(raw_yaml)
@@ -521,7 +523,10 @@ def schedule_suite(job_config,
                 args=arg,
             )
         count += 1
-    return job_count
+    log.info('Suite %s in %s scheduled %d jobs.' % (suite_name, path, count))
+    log.info('Suite %s in %s -- %d jobs were filtered out.' % (suite_name,
+              path, len(configs) - count))
+    return count
 
 
 def combine_path(left, right):
@@ -560,6 +565,7 @@ def build_matrix(path):
     if os.path.isfile(path):
         if path.endswith('.yaml'):
             return [(None, [path])]
+        return []
     if os.path.isdir(path):
         files = sorted(os.listdir(path))
         if '+' in files:
@@ -579,8 +585,9 @@ def build_matrix(path):
             sublists = []
             for fn in files:
                 raw = build_matrix(os.path.join(path, fn))
-                sublists.append([(combine_path(fn, item[0]), item[1])
-                                for item in raw])
+                if raw:
+                    sublists.append([(combine_path(fn, item[0]), item[1])
+                                     for item in raw])
             out = []
             if sublists:
                 for sublist in itertools.product(*sublists):

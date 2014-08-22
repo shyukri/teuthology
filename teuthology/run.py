@@ -12,7 +12,10 @@ from .misc import get_user
 from .misc import read_config
 from .nuke import nuke
 from .run_tasks import run_tasks
+from .repo_utils import fetch_qa_suite
 from .results import email_results
+
+log = logging.getLogger(__name__)
 
 
 def set_up_logging(ctx):
@@ -22,9 +25,7 @@ def set_up_logging(ctx):
     if ctx.archive is not None:
         os.mkdir(ctx.archive)
 
-        teuthology.setup_log_file(
-            logging.getLogger(),
-            os.path.join(ctx.archive, 'teuthology.log'))
+        teuthology.setup_log_file(os.path.join(ctx.archive, 'teuthology.log'))
 
     install_except_hook()
 
@@ -65,9 +66,36 @@ def write_initial_metadata(ctx):
             yaml.safe_dump(info, f, default_flow_style=False)
 
 
+def fetch_tasks_if_needed(job_config):
+    """
+    Fetch the suite repo (and include it in sys.path) so that we can use its
+    tasks.
+    """
+    # Any scheduled job will already have the suite checked out and its
+    # $PYTHONPATH set. We can check for this by looking for 'suite_path'
+    # in its config.
+    suite_path = job_config.get('suite_path')
+    if suite_path:
+        log.info("suite_path is set to %s; will attempt to use it", suite_path)
+        if suite_path not in sys.path:
+            sys.path.insert(1, suite_path)
+
+    try:
+        import tasks
+        log.info("Found tasks at %s", os.path.dirname(tasks.__file__))
+        return
+    except ImportError:
+        log.info("Tasks not found; will attempt to fetch")
+
+    ceph_branch = job_config.get('branch', 'master')
+    suite_branch = job_config.get('suite_branch', ceph_branch)
+    suite_path = fetch_qa_suite(suite_branch)
+    sys.path.insert(1, suite_path)
+    job_config['suite_path'] = suite_path
+
+
 def main(ctx):
     set_up_logging(ctx)
-    log = logging.getLogger(__name__)
 
     if ctx.owner is None:
         ctx.owner = get_user()
@@ -147,6 +175,11 @@ def main(ctx):
     ])
 
     ctx.config['tasks'][:0] = init_tasks
+
+    if ctx.suite_path is not None:
+        ctx.config['suite_path'] = ctx.suite_path
+
+    fetch_tasks_if_needed(ctx.config)
 
     try:
         run_tasks(tasks=ctx.config['tasks'], ctx=ctx)
