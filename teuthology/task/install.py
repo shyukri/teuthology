@@ -29,10 +29,7 @@ rpm_packages = {'ceph': [
     #'libcephfs_jni1',
     'libcephfs1',
     'python-ceph',
-<<<<<<< HEAD
 ]}
-=======
-]
 
 deb_packages = {'ceph': [
     'ceph',
@@ -53,18 +50,6 @@ deb_packages = {'ceph': [
     'libcephfs-java',
 ]}
 
-rpm_packages = {'ceph': [
-    'ceph-debuginfo',
-    'ceph-radosgw',
-    'ceph-test',
-    'ceph-devel',
-    'ceph',
-    'ceph-fuse',
-    'rest-bench',
-    'libcephfs_jni1',
-    'libcephfs1',
-    'python-ceph',
-]}
 
 def _run_and_log_error_if_fails(remote, args):
     """
@@ -664,21 +649,12 @@ def install_packages(ctx, pkgs, config):
     :param pkgs: list of packages names to install
     :param config: the config dict
     """
-  
     with parallel() as p:
         for remote in ctx.cluster.remotes.iterkeys():
-<<<<<<< HEAD
             p.spawn(
                 _update_rpm_package_list_and_install,
-                ctx, remote, pkgs['rpm'], config)
+                ctx, remote, pkgs['rpm'], config) 
 
-=======
-            system_type = teuthology.get_system_type(remote)
-            p.spawn(remove_sources_pkgs[
-                    system_type], remote, config.get('project', 'ceph'))
-            p.spawn(remove_sources_pkgs[
-                    system_type], remote, 'calamari')
->>>>>>> master
 
 @contextlib.contextmanager
 def install(ctx, config):
@@ -738,8 +714,6 @@ def install(ctx, config):
 
 
 
-<<<<<<< HEAD
-=======
 def upgrade_old_style(ctx, node, remote, pkgs, system_type):
     """
     Handle the upgrade using methods in use prior to ceph-deploy.
