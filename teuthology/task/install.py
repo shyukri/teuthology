@@ -418,7 +418,6 @@ def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
             pkg=ceph_release)
         if cmp_msg != err_mess.getvalue().strip():
             raise
->>>>>>> master
 
 
 
