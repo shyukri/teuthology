@@ -11,6 +11,7 @@ import getpass
 from . import beanstalk
 from . import report
 from .config import config
+from . import misc
 
 log = logging.getLogger(__name__)
 
@@ -84,10 +85,15 @@ def find_run_info(serializer, run_name):
     pids = []
     run_info = {}
     job_info = {}
-    for (job_id, job_dir) in serializer.jobs_for_run(run_name).iteritems():
+    job_num = 0
+    jobs = serializer.jobs_for_run(run_name)
+    job_total = len(jobs)
+    for (job_id, job_dir) in jobs.iteritems():
         if not os.path.isdir(job_dir):
             continue
-        job_info = serializer.job_info(run_name, job_id)
+        job_num += 1
+        beanstalk.print_progress(job_num, job_total, 'Reading Job: ')
+        job_info = serializer.job_info(run_name, job_id, simple=True)
         for key in job_info.keys():
             if key in run_info_fields and key not in run_info:
                 run_info[key] = job_info[key]
@@ -205,7 +211,7 @@ def nuke_targets(targets_dict, owner):
 
     to_nuke = []
     for target in targets:
-        to_nuke.append(target.split('@')[1].split('.')[0])
+        to_nuke.append(misc.decanonicalize_hostname(target))
 
     target_file = tempfile.NamedTemporaryFile(delete=False)
     target_file.write(yaml.safe_dump(targets_dict))

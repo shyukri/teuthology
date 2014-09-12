@@ -4,8 +4,9 @@ monkey.patch_all()
 from cStringIO import StringIO
 
 import os
-from .. import connection, run
+from .. import connection, remote, run
 from .util import assert_raises
+from teuthology.exceptions import CommandCrashedError, ConnectionLostError
 
 from pytest import skip
 
@@ -25,7 +26,7 @@ class TestIntegration():
     def test_crash(self):
         ssh = connection.connect(HOST)
         e = assert_raises(
-            run.CommandCrashedError,
+            CommandCrashedError,
             run.run,
             client=ssh,
             args=['sh', '-c', 'kill -ABRT $$'],
@@ -36,7 +37,7 @@ class TestIntegration():
     def test_lost(self):
         ssh = connection.connect(HOST)
         e = assert_raises(
-            run.ConnectionLostError,
+            ConnectionLostError,
             run.run,
             client=ssh,
             args=['sh', '-c', 'kill -ABRT $PPID'],
@@ -72,3 +73,12 @@ class TestIntegration():
             stdout=StringIO(),
             )
         assert r.stdout.getvalue() == 'yup\n'
+
+    def test_distro(self):
+        rem = remote.Remote(HOST)
+        assert rem.distro.distributor
+        assert rem.distro.name
+        assert rem.distro.description
+        assert rem.distro.release
+        assert rem.distro.codename
+        assert rem.distro.package_type

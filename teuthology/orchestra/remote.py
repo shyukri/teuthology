@@ -37,21 +37,21 @@ class Remote(object):
                  host_key=None, keep_alive=True):
         self.name = name
         if '@' in name:
-            (self.user, self.hostname) = name.split('@')
+            (self.user, hostname) = name.split('@')
         else:
             # os.getlogin() doesn't work on non-login shells. The following
             # should work on any unix system
             self.user = pwd.getpwuid(os.getuid()).pw_name
-            self.hostname = name
-        self._shortname = shortname
-        self.host_key = host_key
+            hostname = name
+        self._shortname = shortname or hostname.split('.')[0]
+        self._host_key = host_key
         self.keep_alive = keep_alive
         self.console = console
         self.ssh = ssh or self.connect()
 
     def connect(self):
         self.ssh = connection.connect(user_at_host=self.name,
-                                      host_key=self.host_key,
+                                      host_key=self._host_key,
                                       keep_alive=self.keep_alive)
         return self.ssh
 
@@ -60,20 +60,28 @@ class Remote(object):
         Attempts to re-establish connection. Returns True for success; False
         for failure.
         """
-        self.ssh.close()
+        if self.ssh is not None:
+            self.ssh.close()
         try:
-            self.ssh = self.connect()
+            self.connect()
             return self.is_online
         except Exception as e:
             log.debug(e)
             return False
 
     @property
+    def hostname(self):
+        if not hasattr(self, '_hostname'):
+            proc = self.run(args=['hostname', '--fqdn'], stdout=StringIO())
+            proc.wait()
+            self._hostname = proc.stdout.getvalue().strip()
+        return self._hostname
+
+    @property
     def shortname(self):
-        name = self._shortname
-        if name is None:
-            name = self.hostname.split('.')[0]
-        return name
+        if self._shortname is None:
+            self._shortname = self.hostname.split('.')[0]
+        return self._shortname
 
     @property
     def is_online(self):
@@ -111,6 +119,8 @@ class Remote(object):
 
         TODO refactor to move run.run here?
         """
+        if self.ssh is None:
+            self.reconnect()
         r = self._runner(client=self.ssh, name=self.shortname, **kwargs)
         r.remote = self
         return r
@@ -153,6 +163,14 @@ class Remote(object):
             args=args,
             )
 
+    def _sftp_put_file(self, local_path, remote_path):
+        """
+        Use the paramiko.SFTPClient to put a file. Returns the remote filename.
+        """
+        sftp = self.ssh.open_sftp()
+        sftp.put(local_path, remote_path)
+        return
+
     def _sftp_get_file(self, remote_path, local_path):
         """
         Use the paramiko.SFTPClient to get a file. Returns the local filename.
@@ -171,6 +189,16 @@ class Remote(object):
 
     def remove(self, path):
         self.run(args=['rm', '-fr', path])
+
+    def put_file(self, path, dest_path, sudo=False):
+        """
+        Copy a local filename to a remote file
+        """
+        if sudo:
+            raise NotImplementedError("sudo not supported")
+
+        self._sftp_put_file(path, dest_path)
+        return
 
     def get_file(self, path, sudo=False, dest_dir='/tmp'):
         """
@@ -215,6 +243,90 @@ class Remote(object):
             self.chmod(remote_temp_path, '0666')
         self._sftp_get_file(remote_temp_path, to_path)
         self.remove(remote_temp_path)
+
+    @property
+    def distro(self):
+        if not hasattr(self, '_distro'):
+            lsb_info = self.run(args=['lsb_release', '-a'], stdout=StringIO(),
+                                stderr=StringIO())
+            self._distro = Distribution(lsb_info.stdout.getvalue().strip())
+        return self._distro
+
+    @property
+    def arch(self):
+        if not hasattr(self, '_arch'):
+            proc = self.run(args=['uname', '-p'], stdout=StringIO())
+            proc.wait()
+            self._arch = proc.stdout.getvalue().strip()
+        return self._arch
+
+    @property
+    def host_key(self):
+        if not self._host_key:
+            trans = self.ssh.get_transport()
+            key = trans.get_remote_server_key()
+            self._host_key = ' '.join((key.get_name(), key.get_base64()))
+        return self._host_key
+
+    @property
+    def inventory_info(self):
+        node = dict()
+        node['name'] = self.hostname
+        node['user'] = self.user
+        node['arch'] = self.arch
+        node['os_type'] = self.distro.name
+        node['os_version'] = self.distro.release
+        node['ssh_pub_key'] = self.host_key
+        node['up'] = True
+        return node
+
+
+class Distribution(object):
+    """
+    Parse 'lsb_release -a' output and populate attributes
+
+    Given output like:
+        Distributor ID: Ubuntu
+        Description:    Ubuntu 12.04.4 LTS
+        Release:        12.04
+        Codename:       precise
+
+    Attributes will be:
+        distributor = 'Ubuntu'
+        description = 'Ubuntu 12.04.4 LTS'
+        release = '12.04'
+        codename = 'precise'
+    Additionally, a few convenience attributes will be set:
+        name = 'ubuntu'
+        package_type = 'deb'
+    """
+
+    __slots__ = ['_lsb_release_str', '__expr', 'distributor', 'description',
+                 'release', 'codename', 'name', 'package_type']
+
+    def __init__(self, lsb_release_str):
+        self._lsb_release_str = lsb_release_str.strip()
+        self.distributor = self._get_match("Distributor ID:\s*(.*)")
+        self.name = self.distributor.lower()
+        self.description = self._get_match("Description:\s*(.*)")
+        self.release = self._get_match("Release:\s*(.*)")
+        self.codename = self._get_match("Codename:\s*(.*)")
+
+        if self.distributor in ['Ubuntu', 'Debian']:
+            self.package_type = "deb"
+        elif self.distributor in ['CentOS', 'Fedora', 'RedHatEnterpriseServer',
+                                  'openSUSE project', 'SUSE LINUX']:
+            self.package_type = "rpm"
+
+    def _get_match(self, regex):
+        match = re.search(regex, self._lsb_release_str)
+        if match:
+            return match.groups()[0]
+        return ''
+
+    def __str__(self):
+        return " ".join([self.distributor, self.release,
+                         self.codename]).strip()
 
 
 def getShortName(name):
@@ -429,9 +541,10 @@ class VirtualConsole():
             raise RuntimeError("libvirt not found")
 
         self.shortname = getShortName(name)
-        status_info = ls.get_status('', self.shortname)
+        status_info = ls.get_status(self.shortname)
         try:
-            phys_host = status_info['vpshost']
+            if status_info.get('is_vm', False):
+                phys_host = status_info['vm_host']['name'].split('.')[0]
         except TypeError:
             return
         self.connection = libvirt.open(phys_host)

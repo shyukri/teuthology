@@ -21,6 +21,8 @@ import re
 import tempfile
 
 from teuthology import safepath
+from teuthology.exceptions import (CommandCrashedError, CommandFailedError,
+                                   ConnectionLostError)
 from .orchestra import run
 from .config import config
 from .contextutil import safe_while
@@ -33,6 +35,36 @@ is_vm = lambda x: x.startswith('vpm') or x.startswith('ubuntu@vpm')
 
 is_arm = lambda x: x.startswith('tala') or x.startswith(
     'ubuntu@tala') or x.startswith('saya') or x.startswith('ubuntu@saya')
+
+hostname_expr = '(?P<user>.*@)?(?P<shortname>.*)\.front\.sepia\.ceph\.com'
+
+
+def canonicalize_hostname(hostname, user='ubuntu'):
+    match = re.match(hostname_expr, hostname)
+    if match:
+        match_d = match.groupdict()
+        shortname = match_d['shortname']
+        if user is None:
+            user_ = user
+        else:
+            user_ = match_d.get('user') or user
+    else:
+        shortname = hostname.split('.')[0]
+        user_ = user
+
+    user_at = user_.strip('@') + '@' if user_ else ''
+
+    ret = '{user_at}{short}.front.sepia.ceph.com'.format(
+        user_at=user_at,
+        short=shortname)
+    return ret
+
+
+def decanonicalize_hostname(hostname):
+    match = re.match(hostname_expr, hostname)
+    if match:
+        hostname = match.groupdict()['shortname']
+    return hostname
 
 
 def config_file(string):
@@ -776,7 +808,7 @@ def get_scratch_devices(remote):
                 ]
             )
             retval.append(dev)
-        except run.CommandFailedError:
+        except CommandFailedError:
             log.debug("get_scratch_devices: %s is in use" % dev)
     return retval
 
@@ -1017,13 +1049,15 @@ def get_valgrind_args(testdir, name, preamble, v):
             '--num-callers=50',
             '--suppressions={tdir}/valgrind.supp'.format(tdir=testdir),
             '--xml=yes',
-            '--xml-file={vdir}/{n}.log'.format(vdir=val_path, n=name)
+            '--xml-file={vdir}/{n}.log'.format(vdir=val_path, n=name),
+            '--time-stamp=yes',
             ]
     else:
         extra_args = [
             'valgrind',
             '--suppressions={tdir}/valgrind.supp'.format(tdir=testdir),
-            '--log-file={vdir}/{n}.log'.format(vdir=val_path, n=name)
+            '--log-file={vdir}/{n}.log'.format(vdir=val_path, n=name),
+            '--time-stamp=yes',
             ]
     args = [
         'cd', testdir,
@@ -1042,9 +1076,9 @@ def stop_daemons_of_type(ctx, type_):
     for daemon in ctx.daemons.iter_daemons_of_role(type_):
         try:
             daemon.stop()
-        except (run.CommandFailedError,
-                run.CommandCrashedError,
-                run.ConnectionLostError):
+        except (CommandFailedError,
+                CommandCrashedError,
+                ConnectionLostError):
             exc_info = sys.exc_info()
             log.exception('Saw exception from %s.%s', daemon.role, daemon.id_)
     if exc_info != (None, None, None):

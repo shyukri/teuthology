@@ -155,6 +155,7 @@ def main(ctx):
         {'internal.save_config': None},
         {'internal.check_lock': None},
         {'internal.connect': None},
+        {'internal.push_inventory': None},
         {'internal.serialize_remote_roles': None},
         {'internal.check_conflict': None},
     ])
@@ -184,7 +185,7 @@ def main(ctx):
     try:
         run_tasks(tasks=ctx.config['tasks'], ctx=ctx)
     finally:
-        if not ctx.summary.get('success') and ctx.config.get('nuke-on-error'):
+        if not ctx.summary.get('success') and bool(ctx.config.get('nuke-on-error')):
             # only unlock if we locked them in the first place
             nuke(ctx, ctx.lock)
         if ctx.archive is not None:

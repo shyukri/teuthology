@@ -9,12 +9,13 @@ import logging
 import os
 import time
 import yaml
-import re
 import subprocess
 
 from teuthology import lockstatus
 from teuthology import lock
-from teuthology import misc as teuthology
+from teuthology import misc
+from teuthology import provision
+from teuthology.config import config as teuth_config
 from teuthology.parallel import parallel
 from ..orchestra import cluster, remote, run
 
@@ -27,7 +28,7 @@ def base(ctx, config):
     Create the test directory that we will be using on the remote system
     """
     log.info('Creating test directory...')
-    testdir = teuthology.get_testdir(ctx)
+    testdir = misc.get_testdir(ctx)
     run.wait(
         ctx.cluster.run(
             args=[
@@ -65,34 +66,29 @@ def lock_machines(ctx, config):
     log.info('Locking machines...')
     assert isinstance(config[0], int), 'config[0] must be an integer'
     machine_type = config[1]
-    machine_types = teuthology.get_multi_machine_types(machine_type)
     how_many = config[0]
+    # We want to make sure there are always this many machines available
+    to_reserve = 5
 
     while True:
-        # make sure there are enough machines up
-        machines = lock.list_locks()
+        # get a candidate list of machines
+        machines = lock.list_locks(machine_type=machine_type, up=True,
+                                   locked=False, count=how_many + to_reserve)
         if machines is None:
             if ctx.block:
-                log.warn('error listing machines, trying again')
+                log.error('Error listing machines, trying again')
                 time.sleep(20)
                 continue
             else:
-                assert 0, 'error listing machines'
-
-        is_up = lambda machine: machine['up'] and machine['type'] in machine_types  # noqa
-        num_up = len(filter(is_up, machines))
-        assert num_up >= how_many, 'not enough machines are up'
+                raise RuntimeError('Error listing machines')
 
         # make sure there are machines for non-automated jobs to run
-        is_up_and_free = lambda machine: machine['up'] and machine['locked'] == 0 and machine['type'] in machine_types  # noqa
-        up_and_free = filter(is_up_and_free, machines)
-        num_free = len(up_and_free)
-        if num_free < 6 and ctx.owner.startswith('scheduled'):
+        if len(machines) <= to_reserve and ctx.owner.startswith('scheduled'):
             if ctx.block:
                 log.info(
                     'waiting for more machines to be free (need %s see %s)...',
                     how_many,
-                    num_free,
+                    len(machines),
                 )
                 time.sleep(10)
                 continue
@@ -104,33 +100,33 @@ def lock_machines(ctx, config):
         if len(newly_locked) == how_many:
             vmlist = []
             for lmach in newly_locked:
-                if teuthology.is_vm(lmach):
+                if misc.is_vm(lmach):
                     vmlist.append(lmach)
             if vmlist:
                 log.info('Waiting for virtual machines to come up')
-                keyscan_out = ''
+                keys_dict = dict()
                 loopcount = 0
-                while len(keyscan_out.splitlines()) != len(vmlist):
+                while len(keys_dict) != len(vmlist):
                     loopcount += 1
                     time.sleep(10)
-                    keyscan_out, current_locks = lock.keyscan_check(ctx,
-                                                                    vmlist)
+                    keys_dict = lock.ssh_keyscan(vmlist)
                     log.info('virtual machine is still unavailable')
                     if loopcount == 40:
                         loopcount = 0
                         log.info('virtual machine(s) still not up, ' +
                                  'recreating unresponsive ones.')
                         for guest in vmlist:
-                            if guest not in keyscan_out:
+                            if guest not in keys_dict.keys():
                                 log.info('recreating: ' + guest)
-                                lock.destroy_if_vm(ctx, 'ubuntu@' + guest)
-                                lock.create_if_vm(ctx, 'ubuntu@' + guest)
-                if lock.update_keys(ctx, keyscan_out, current_locks):
+                                full_name = misc.canonicalize_hostname(guest)
+                                provision.destroy_if_vm(ctx, full_name)
+                                provision.create_if_vm(ctx, full_name)
+                if lock.do_update_keys(keys_dict):
                     log.info("Error in virtual machine keys")
                 newscandict = {}
                 for dkey in newly_locked.iterkeys():
-                    stats = lockstatus.get_status(ctx, dkey)
-                    newscandict[dkey] = stats['sshpubkey']
+                    stats = lockstatus.get_status(dkey)
+                    newscandict[dkey] = stats['ssh_pub_key']
                 ctx.config['targets'] = newscandict
             else:
                 ctx.config['targets'] = newly_locked
@@ -169,7 +165,7 @@ def check_lock(ctx, config):
         return
     log.info('Checking locks...')
     for machine in ctx.config['targets'].iterkeys():
-        status = lockstatus.get_status(ctx, machine)
+        status = lockstatus.get_status(machine)
         log.debug('machine status is %s', repr(status))
         assert status is not None, \
             'could not read lock status for {name}'.format(name=machine)
@@ -197,6 +193,7 @@ def timer(ctx, config):
         log.info('Duration was %f seconds', duration)
         ctx.summary['duration'] = duration
 
+
 def connect(ctx, config):
     """
     Open a connection to a remote host.
@@ -207,6 +204,7 @@ def connect(ctx, config):
     for name in ctx.config['targets'].iterkeys():
         machs.append(name)
     for t, key in ctx.config['targets'].iteritems():
+        t = misc.canonicalize_hostname(t)
         log.debug('connecting to %s', t)
         try:
             if ctx.config['sshkeys'] == 'ignore':
@@ -214,7 +212,7 @@ def connect(ctx, config):
         except (AttributeError, KeyError):
             pass
         if key.startswith('ssh-rsa ') or key.startswith('ssh-dss '):
-            if teuthology.is_vm(t):
+            if misc.is_vm(t):
                 key = None
         remotes.append(
             remote.Remote(name=t, host_key=key, keep_alive=True, console=None))
@@ -228,6 +226,23 @@ def connect(ctx, config):
     else:
         for rem in remotes:
             ctx.cluster.add(rem, rem.name)
+
+
+@contextlib.contextmanager
+def push_inventory(ctx, config):
+    if not teuth_config.lock_server:
+        yield
+        return
+
+    def push():
+        for rem in ctx.cluster.remotes.keys():
+            info = rem.inventory_info
+            lock.update_inventory(info)
+    try:
+        push()
+        yield
+    except Exception:
+        log.exception("Error pushing inventory")
 
 
 def serialize_remote_roles(ctx, config):
@@ -269,7 +284,7 @@ def check_conflict(ctx, config):
     Note directory use conflicts and stale directories.
     """
     log.info('Checking for old test directory...')
-    testdir = teuthology.get_testdir(ctx)
+    testdir = misc.get_testdir(ctx)
     processes = ctx.cluster.run(
         args=[
             'test', '!', '-e', testdir,
@@ -292,7 +307,7 @@ def archive(ctx, config):
     Handle the creation and deletion of the archive directory.
     """
     log.info('Creating archive directory...')
-    archive_dir = teuthology.get_archive_dir(ctx)
+    archive_dir = misc.get_archive_dir(ctx)
     run.wait(
         ctx.cluster.run(
             args=[
@@ -317,7 +332,7 @@ def archive(ctx, config):
                 os.mkdir(logdir)
             for rem in ctx.cluster.remotes.iterkeys():
                 path = os.path.join(logdir, rem.shortname)
-                teuthology.pull_directory(rem, archive_dir, path)
+                misc.pull_directory(rem, archive_dir, path)
 
         log.info('Removing archive directory...')
         run.wait(
@@ -370,7 +385,7 @@ def coredump(ctx, config):
     Stash a coredump of this system if an error occurs.
     """
     log.info('Enabling coredump saving...')
-    archive_dir = teuthology.get_archive_dir(ctx)
+    archive_dir = misc.get_archive_dir(ctx)
     run.wait(
         ctx.cluster.run(
             args=[
@@ -431,7 +446,7 @@ def syslog(ctx, config):
 
     log.info('Starting syslog monitoring...')
 
-    archive_dir = teuthology.get_archive_dir(ctx)
+    archive_dir = misc.get_archive_dir(ctx)
     run.wait(
         ctx.cluster.run(
             args=[
@@ -449,7 +464,7 @@ kern.* -{adir}/syslog/kern.log;RSYSLOG_FileFormat
 '''.format(adir=archive_dir))
     try:
         for rem in ctx.cluster.remotes.iterkeys():
-            teuthology.sudo_write_file(
+            misc.sudo_write_file(
                 remote=rem,
                 path=CONF,
                 data=conf_fp,
@@ -558,6 +573,7 @@ kern.* -{adir}/syslog/kern.log;RSYSLOG_FileFormat
                 ),
             )
 
+
 def vm_setup(ctx, config):
     """
     Look for virtual machines and handle their initialization
@@ -565,8 +581,8 @@ def vm_setup(ctx, config):
     with parallel() as p:
         editinfo = os.path.join(os.path.dirname(__file__),'edit_sudoers.sh')
         for rem in ctx.cluster.remotes.iterkeys():
-            mname = re.match(".*@([^\.]*)\.?.*", str(rem)).group(1)
-            if teuthology.is_vm(mname):
+            mname = rem.shortname
+            if misc.is_vm(mname):
                 r = rem.run(args=['test', '-e', '/ceph-qa-ready',],
                         stdout=StringIO(),
                         check_status=False,)
