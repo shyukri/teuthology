@@ -858,7 +858,6 @@ upgrade.__doc__ = docstring_for_upgrade.format(cmd_parameter='upgrade')
 def ceph_deploy_upgrade(ctx, config):
     upgrade_common(ctx, config, upgrade_with_ceph_deploy)
     yield
->>>>>>> master
 
 ceph_deploy_upgrade.__doc__ = docstring_for_upgrade.format(
         cmd_parameter='ceph_deploy_upgrade')
