@@ -296,6 +296,7 @@ def unlock_many(names, user):
         locked_by=user,
         names=names,
     )
+
     response = requests.post(
         uri,
         data=json.dumps(data),
@@ -304,6 +305,7 @@ def unlock_many(names, user):
     if response.ok:
         log.debug("Unlocked: %s", ', '.join(names))
     else:
+        log.info(response.text)
         log.error("Failed to unlock: %s", ', '.join(names))
     return response.ok
 

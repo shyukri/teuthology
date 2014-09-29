@@ -47,7 +47,8 @@ def base(ctx, config):
         run.wait(
             ctx.cluster.run(
                 args=[
-                    'rmdir',
+                    'rm',
+                    '-rf',
                     '--',
                     testdir,
                     ],
@@ -68,7 +69,7 @@ def lock_machines(ctx, config):
     machine_type = config[1]
     how_many = config[0]
     # We want to make sure there are always this many machines available
-    to_reserve = 5
+    to_reserve = 0
 
     while True:
         # get a candidate list of machines
@@ -94,7 +95,6 @@ def lock_machines(ctx, config):
                 continue
             else:
                 assert 0, 'not enough machines free'
-
         newly_locked = lock.lock_many(ctx, how_many, machine_type, ctx.owner,
                                       ctx.archive)
         if len(newly_locked) == how_many:
@@ -204,7 +204,7 @@ def connect(ctx, config):
     for name in ctx.config['targets'].iterkeys():
         machs.append(name)
     for t, key in ctx.config['targets'].iteritems():
-        #t = misc.canonicalize_hostname(t)
+        t = misc.canonicalize_hostname(t)
         log.debug('connecting to %s', t)
         try:
             if ctx.config['sshkeys'] == 'ignore':

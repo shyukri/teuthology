@@ -34,7 +34,6 @@ def need_restart():
 
 
 def restart():
-    log.info('Restarting...')
     args = sys.argv[:]
     args.insert(0, sys.executable)
     os.execv(sys.executable, args)
@@ -79,8 +78,8 @@ def main(ctx):
     beanstalk.watch_tube(connection, ctx.tube)
     result_proc = None
 
-    fetch_teuthology('master')
-    fetch_qa_suite('master')
+    #fetch_teuthology('master')
+    #fetch_qa_suite('master')
 
     while True:
         # Check to see if we have a teuthology-results process hanging around
@@ -98,6 +97,7 @@ def main(ctx):
             continue
 
         # bury the job so it won't be re-run if it fails
+        log.info('burry...')
         job.bury()
         log.info('Reserved job %d', job.jid)
         log.info('Config is: %s', job.body)
@@ -116,13 +116,13 @@ def main(ctx):
         job_config['teuthology_branch'] = teuthology_branch
 
         try:
-            teuth_path = fetch_teuthology(branch=teuthology_branch)
+            #####teuth_path = fetch_teuthology(branch=teuthology_branch)
             # For the teuthology tasks, we look for suite_branch, and if we
             # don't get that, we look for branch, and fall back to 'master'.
             # last-in-suite jobs don't have suite_branch or branch set.
             ceph_branch = job_config.get('branch', 'master')
             suite_branch = job_config.get('suite_branch', ceph_branch)
-            job_config['suite_path'] = fetch_qa_suite(suite_branch)
+            job_config['suite_path'] = '/home/jenkins/src/ceph-qa-suite_master1'#fetch_qa_suite(suite_branch)
         except BranchNotFoundError:
             log.exception(
                 "Branch not found; throwing job away")
@@ -132,7 +132,7 @@ def main(ctx):
                                    job_config['job_id'])
             continue
 
-        teuth_bin_path = os.path.join(teuth_path, 'virtualenv', 'bin')
+        teuth_bin_path = '/home/jenkins/.virtualenvs/teuthology/bin'#os.path.join(teuth_path, 'virtualenv', 'bin')
         if not os.path.isdir(teuth_bin_path):
             raise RuntimeError("teuthology branch %s at %s not bootstrapped!" %
                                (teuthology_branch, teuth_bin_path))
@@ -177,6 +177,7 @@ def run_with_watchdog(process, job_config):
     )
 
     # Sleep once outside of the loop to avoid double-posting jobs
+    log.info('teuth_config.watchdog_interval - '+str(teuth_config.watchdog_interval))
     time.sleep(teuth_config.watchdog_interval)
     symlink_worker_log(job_config['worker_log'], job_config['archive_path'])
     while process.poll() is None:

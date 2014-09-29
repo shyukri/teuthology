@@ -63,7 +63,8 @@ def results(args):
 
 
 def generate_coverage(args):
-    log.info('starting coverage generation')
+    log.info('skipping coverage generation')
+    return
     subprocess.Popen(
         args=[
             os.path.join(os.path.dirname(sys.argv[0]), 'teuthology-coverage'),
@@ -102,8 +103,7 @@ def build_email_body(name, archive_dir, timeout):
 
     for job in ls.get_jobs(archive_dir):
         job_dir = os.path.join(archive_dir, job)
-        summary_file = os.path.join(job_dir, 'summary.yaml')
-
+        summary_file = os.path.join(job_dir, 'summary.yaml') 
         # Every job gets a link to e.g. pulpito's pages
         info_url = misc.get_results_url(name, job)
         if info_url:
