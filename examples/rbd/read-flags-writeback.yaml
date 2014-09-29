@@ -1,0 +1,15 @@
+check-locks: false
+interactive-on-error: true
+roles:
+- [mon.a, osd.0, osd.1, client.0]
+tasks:
+- install:
+- ceph:
+    conf:
+      client:
+        rbd cache: true
+- workunit:
+    clients:
+      all: [rbd/read-flags.sh]
+targets:
+  jenkins@teuthida-1: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCnCKwhjNSCuuPTs/stNAP6DM/yYj++c3Tzit5XI4zrdyal65UrlLHwbRw9649MLLWf983Y8U3HRW4q3c2J7DQ0J2InmBr6x0iduJE3/ZrNfNC2ukqyxV8YqWpR+J4ShSzF1+EZL+/VFOQchLIS2gbrbIPQBRtRCP9O+qcOEutxt/S3dlmtB3FgZd0QIZnSHVZG+ZvjW5xst1O85hC4APUwhuwMLZjTiDS3uYP56pNDH7EpA+AsabgP4OWFPOWf9d4KRob9PZQuwy0+IZi7k2ktKzj0vrcip+Kgi0y87wXCJcKEvmZ+NOHZyPE2rayQYnapR6wvx0wyXQnRqbvPFwCj

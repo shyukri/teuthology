@@ -1,3 +1,4 @@
+unlock_on_failure: true
 check-locks: false
 overrides:
   ceph:
@@ -6,10 +7,12 @@ roles:
 - - mon.a
   - osd.0                                                                                                                                                                                       
 - - client.0                                                                                                                                                                                    
-- - osd.1                                                                                                                                                                                       
+- - osd.1
+  - osd.2                                                                                                                                                                                       
 tasks:                                                                                                                                                                                          
 - install:
 - ceph: null
-- rgw:
-  - client.0
-- radosgw-admin:
+- workunit:
+    clients:
+      client.0:
+        - rbd/test_lock_fence.sh

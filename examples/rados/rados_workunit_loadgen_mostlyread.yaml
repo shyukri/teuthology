@@ -1,0 +1,23 @@
+check-locks: false
+interactive-on-error: true
+overrides:
+  ceph:
+    log-whitelist:
+    - wrongly marked me down
+roles:
+- - mon.a
+  - osd.0                                                                                                                                                                                       
+- - client.0                                                                                                                                                                                    
+- - osd.1
+  - osd.2                                                                                                                                                                                       
+tasks:                                                                                                                                                                                          
+- install:
+- ceph: null
+- workunit:
+    clients:
+      all 
+        - rados/load-gen-mostlyread.sh
+targets:
+  jenkins@teuthida-1: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCnCKwhjNSCuuPTs/stNAP6DM/yYj++c3Tzit5XI4zrdyal65UrlLHwbRw9649MLLWf983Y8U3HRW4q3c2J7DQ0J2InmBr6x0iduJE3/ZrNfNC2ukqyxV8YqWpR+J4ShSzF1+EZL+/VFOQchLIS2gbrbIPQBRtRCP9O+qcOEutxt/S3dlmtB3FgZd0QIZnSHVZG+ZvjW5xst1O85hC4APUwhuwMLZjTiDS3uYP56pNDH7EpA+AsabgP4OWFPOWf9d4KRob9PZQuwy0+IZi7k2ktKzj0vrcip+Kgi0y87wXCJcKEvmZ+NOHZyPE2rayQYnapR6wvx0wyXQnRqbvPFwCj
+  jenkins@teuthida-2: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDgWTqHQc/yHpa/y6wPeLF/oEAYc25HdfqVUNRje9j3S/e+HKJWo3OuZWnUeDiqDf8SWt1h8K9EdFsvXD3lkfsI9Ov2l5pMzNiBQK6MEg9kyRurb2iMXdtUUoGUhImbknDt13s7pjjiNV0Y+EflhtXjDNLXCfGrHU84UBg1BJYjsgYx78/W72soWMKAtVr22MqnHId6xrKEjq1jx6dcnDXBt9XXadn9gMDIevPUpUxNepnOXUrj6xS7/prRx7x6WUBidMRzIjiDXolNNBhV2fKFLJxVECb6T6TUH2HC+Yh4WE12//TGQ7YgJFxL7we5rk2Mlc1h9yGGwOFXAHlMdb1p 
+  jenkins@teuthida-3: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCwRHuw88n60lsM6ZXcsmWHb4oITGzqpcfXmuhH0by13e7Svox/bY8ztrpFYV+xI8QFryNZEgGqfHr6XjIg1O0/ljZmgdFU1IswzpKIzlFs8lZb7k7JrAWMwOTQgMB6p6SI4P3Q7hcScmkLvqwXcd0OiDVW9atzOWhzscRfXkCHMgd0Ln2bv2ongbPx8e7l6NtujyEkepdv46aJqHgsQ1lY24j2ubZWyDPUBFr9+M+egvwSP+1JDGUzDqN4OrWXa4ZpKG27gmQW4859MzdnSKnzEqqEqBMfsfaoLYNy+Yxs09qzEEk9k6h02wZ5+oKGScvOwXIde7ZPEGi1XplGaJdj

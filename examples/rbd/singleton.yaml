@@ -1,19 +1,12 @@
 check-locks: false
-interactive-on-error: true
-name: autoevtest
-job_id: 005
+unlock_on_failure: true
 os_type: SLE12
-email: ksharma@suse.de
 roles:
 - [client.0, mon.0, osd.0, osd.1, osd.2, osd.3]
-- [osd.4]
-- [osd.5]
 tasks:
 - install:
 - ceph:
-- interactive:
 - workunit:
     clients:
       client.0:
         - rbd/run_cli_tests.sh
-- interactive:

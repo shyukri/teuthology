@@ -1,0 +1,12 @@
+description: running all the rbd test in rbd_snaps_ops.sh
+unlock_on_failure: true
+check-locks: false
+roles:
+- [mon.a, osd.0, osd.1, client.0]
+tasks:
+- install:
+- ceph:
+- workunit:
+    clients:
+      all: 
+        - mon/rbd_snaps_ops.sh

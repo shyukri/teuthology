@@ -1,19 +1,9 @@
 check-locks: false
-interactive-on-error: true
 roles:
-- [osd.0, client.0]
+- [osd.0]
 - [mon.0, osd.1]
 - [osd.2]
 
 tasks:
 - install:
 - ceph:
-- workunit:
-    clients:
-      client.0:
-        - rbd/run_cli_tests.sh
-
-targets:
-  kapil@test1.example.org: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDs245kAs7YGO/Feqrm0EhO3etTXCqrwxmAPlk7nJafOYW9zaJwY6BLZkyRD0qywVWjy0Ls1/cQVb7h+Fic31uZZ2YL4aWxGrcXJrqUPvMzDAXMTyNt/a3yUn8dR5Cw0j9wH/3s/EgfvvWhdpYko3gShSqAKhoeBp0C3ikk1vHHzyqSWCZULSOiX6ffm+Y+mZuLfiC7w0/tSzKcpXe6M8Ah2dsrrTlXw/MVhp9S/2AuWwX/OkVJbEonWkGNuk4umxEDuS6E9pQPRRhapzdg7pJvYQIU5vnavqV5PCzJHbYou9o4ehtorLFUpaoTldOC+FU07SWkGdyjc23TWBP1h8Tj
-  kapil@test2.example.org: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCxn6VncenXZDNzhVxgall/4+/G/VWIAvljiEHSzvYSw02DEp0rdCp7ZOkUY2c43P2ucVS33/8MwpLDpUrfp4o6hX2pm/7PtP9AkCqcz37UAK4zNmrGHLuag6UbEdgGJ8CL+S2YHsux4Mo+Wd8eXnBd9yYqvB7Bn7GU+JloAglhBd0Uaukoa4720+DdNbZJ1TceuHNgnp8F98RzfDp6jceQjRmUYKFfPrvwgYBtsTF6s/Iw+xtviYEhPONCsTXz8/f/3vMV54SOEvUfEHDNYa5hjLfJNG1JHHaArWWDN4s1/4MtqgO5duIQsLWvQpKzL33HEGfIisi4dtfayqi+o0D5 
-  kapil@test3.example.org: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDeijCShXkFriAVRqVCVewzy6PRf0prt8BOr4L+0SBttJGFAtVD8L5vI18zNMeljVcYOgNCAU65lvmySPnBQp9C0M1iuFFl1/0LaXJn1iREyV/qB2bpd3Fa7Epd0+cdjcUmfJk9fv+SdsrWv3/y8oTMhedp8olRI0a75NPV9IRC7NQ6WLV57f3xpA4YWGwdivYwZN88kDhIvsy/iHMXrcpfG1T5WxTKbTmhcvRs5G/RQFkL5GJngPwrhTzy9/YFdscT5CjA/KbczbR1/clGTCdkPbZfsCnYioMucDLFrnm41k6jhoRsZJ0+cMHqp9Wg1bE9Du+zlqvsoPJtDqaTHC79
