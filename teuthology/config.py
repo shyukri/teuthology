@@ -114,7 +114,7 @@ class TeuthologyConfig(YamlConfig):
         'results_server': 'http://paddles.front.sepia.ceph.com/',
         'src_base_path': os.path.expanduser('~/src'),
         'verify_host_keys': True,
-        'watchdog_interval': 100,
+        'watchdog_interval': 500,
     }
 
     def __init__(self):

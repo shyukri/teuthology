@@ -1,0 +1,24 @@
+unlock_on_failure: true
+check-locks: false
+roles:
+- [mon.a, mds.a, osd.0, osd.1]
+- [mon.b, mds.a-s, mon.c, osd.2, osd.3]
+- [client.0]
+overrides:
+  ceph:
+    conf:
+      client:
+        rbd cache: true
+      global:
+        ms inject socket failures: 5000
+tasks:
+- install: null
+- ceph:
+    fs: xfs
+- interactive:
+- thrashosds:
+    timeout: 1200
+- rbd_fsx:
+    clients:
+    - client.0
+    ops: 2000

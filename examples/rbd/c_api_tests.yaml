@@ -8,11 +8,13 @@ roles:
   - osd.0                                                                                                                                                                                       
 - - client.0                                                                                                                                                                                    
 - - osd.1
-  - osd.2                                                                                                                                                                                       
-tasks:                                                                                                                                                                                          
+  - osd.2
+tasks:
 - install:
 - ceph: null
 - workunit:
     clients:
       client.0:
         - rbd/test_librbd.sh
+    env:
+      RBD_FEATURES: "1"
