@@ -1,6 +1,6 @@
+interactive-on-error: true
 unlock_on_failure: true
 check-locks: false
-interactive-on-error: true
 roles:
 - [mon.a, osd.0, osd.1, client.0]
 tasks:

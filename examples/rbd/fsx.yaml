@@ -15,7 +15,6 @@ tasks:
 - install: null
 - ceph:
     fs: xfs
-- interactive:
 - thrashosds:
     timeout: 1200
 - rbd_fsx:

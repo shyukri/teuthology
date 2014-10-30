@@ -1,5 +1,5 @@
 unlock_on_failure: true
-os_type: SLE12--RC3
+os_type: SLE12-GMC
 overrides:
   workunit:
     branch: firefly

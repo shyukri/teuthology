@@ -13,7 +13,6 @@ roles:
 tasks:                                                                                                                                                                                          
 - install:
 - ceph: null
-- interactive:
 - workunit:
     clients:
       client.0:
