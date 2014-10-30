@@ -222,7 +222,9 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
         s3_branch=s3_branch,
     )
     conf_dict = substitute_placeholders(dict_templ, config_input)
-    conf_dict.update(kernel_dict)
+    #conf_dict.update(kernel_dict)
+    print 'config_dict type - '+str(type(conf_dict))
+    print 'config_dict str - '+str(conf_dict)
     job_config = JobConfig.from_dict(conf_dict)
     return job_config
 
@@ -660,6 +662,18 @@ def substitute_placeholders(input_dict, values_dict):
 
 # Template for the config that becomes the base for each generated job config
 dict_templ = {
+    'branch': Placeholder('ceph_branch'),
+    'teuthology_branch': Placeholder('teuthology_branch'),
+    'machine_type': Placeholder('machine_type'),
+    'nuke-on-error': True,
+    'os_type': Placeholder('distro'),
+    'suite': Placeholder('suite'),
+    'suite_branch': Placeholder('suite_branch'),
+}
+
+
+
+dict_templ_old = {
     'branch': Placeholder('ceph_branch'),
     'teuthology_branch': Placeholder('teuthology_branch'),
     'machine_type': Placeholder('machine_type'),
