@@ -29,25 +29,9 @@ rpm_packages = {'ceph': [
     #'libcephfs_jni1',
     'libcephfs1',
     'python-ceph',
-]}
-
-deb_packages = {'ceph': [
-    'ceph',
-    'ceph-dbg',
-    'ceph-mds',
-    'ceph-mds-dbg',
-    'ceph-common',
-    'ceph-common-dbg',
-    'ceph-fuse',
-    'ceph-fuse-dbg',
-    'ceph-test',
-    'ceph-test-dbg',
-    'radosgw',
-    'radosgw-dbg',
-    'python-ceph',
-    'libcephfs1',
-    'libcephfs1-dbg',
-    'libcephfs-java',
+    #'rbd-kmp-default',
+    #'qemu-block-rbd',
+    #'qemu-block-rbd-debuginfo',
 ]}
 
 
