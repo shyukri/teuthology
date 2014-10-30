@@ -1,0 +1,18 @@
+unlock_on_failure: true
+check-locks: false
+overrides:
+  ceph:
+    fs: xfs
+roles:
+- - mon.a
+  - osd.0                                                                                                                                                                                       
+- - client.0                                                                                                                                                                                    
+- - osd.1
+  - osd.2                                                                                                                                                                                       
+tasks:                                                                                                                                                                                          
+- install:
+- ceph: null
+- workunit:
+    clients:
+      client.0:
+        - rbd/run_cli_tests.sh

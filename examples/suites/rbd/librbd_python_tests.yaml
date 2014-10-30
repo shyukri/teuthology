@@ -1,0 +1,20 @@
+description: running all the librbd tests from test_librbd_python.py in workunit
+os_type: SLE12RC3
+unlock_on_failure: true
+check-locks: false
+overrides:
+  ceph:
+    fs: xfs
+roles:
+- - mon.a
+  - osd.0                                                                                                                                                                                       
+- - client.0                                                                                                                                                                                    
+- - osd.1
+  - osd.2                                                                                                                                                                                       
+tasks:                                                                                                                                                                                          
+- install:
+- ceph: null
+- workunit:
+    clients:
+      client.0:
+        - rbd/test_librbd_python.sh
