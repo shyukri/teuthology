@@ -29,9 +29,9 @@ rpm_packages = {'ceph': [
     #'libcephfs_jni1',
     'libcephfs1',
     'python-ceph',
-    #'rbd-kmp-default',
-    #'qemu-block-rbd',
-    #'qemu-block-rbd-debuginfo',
+    'rbd-kmp-default',
+    'qemu-block-rbd',
+    'qemu-block-rbd-debuginfo',
 ]}
 
 

@@ -346,6 +346,7 @@ def get_hash(project='ceph', branch='master', flavor='basic',
     (arch, release, pkg_type) = get_distro_defaults(distro, machine_type)
     base_url = get_gitbuilder_url(project, release, pkg_type, arch, flavor)
     url = os.path.join(base_url, 'ref', branch, 'sha1')
+    print 'URL IS ' +str(url)
     resp = requests.get(url)
     if not resp.ok:
         return None
