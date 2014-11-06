@@ -10,7 +10,6 @@ from textwrap import fill
 import teuthology
 from teuthology import misc
 from teuthology import ls
-from .job_status import get_status
 from .report import ResultsSerializer
 
 log = logging.getLogger(__name__)
@@ -55,8 +54,7 @@ def results(args):
         if args.email:
             email_results(
                 subject=subject,
-                from_=args.teuthology_config.get('results_sending_email',
-                                                 'teuthology'),
+                from_=args.teuthology_config['results_sending_email'],
                 to=args.email,
                 body=body,
             )
@@ -140,7 +138,7 @@ def build_email_body(name, archive_dir, timeout):
         with file(summary_file) as f:
             summary = yaml.safe_load(f)
 
-        if get_status(summary) == 'pass':
+        if summary['success']:
             passed[job] = email_templates['pass_templ'].format(
                 job_id=job,
                 desc=summary.get('description'),

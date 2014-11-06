@@ -114,33 +114,17 @@ def task(ctx, config):
         for id_, remote in clients:
             log.debug('Unmounting nfs client client.{id}...'.format(id=id_))
             mnt = os.path.join(testdir, 'mnt.{id}'.format(id=id_))
-            try:
-                log.debug('First, syncing client client.{id}'.format(id=id_))
-                remote.run(
-                    args=[
-                        'sync'
-                        ]
-                    )
-                remote.run(
-                    args=[
-                        'sudo',
-                        'lsof', '-V', '+D',
-                        '{mnt}'.format(mnt=mnt),
-                        ],
-                    check_status=False
-                    )
-            finally:
-                remote.run(
-                    args=[
-                        'sudo',
-                        'umount',
-                        mnt,
-                        ],
-                    )
-                remote.run(
-                    args=[
-                        'rmdir',
-                        '--',
-                        mnt,
-                        ],
-                    )
+            remote.run(
+                args=[
+                    'sudo',
+                    'umount',
+                    mnt,
+                    ],
+                )
+            remote.run(
+                args=[
+                    'rmdir',
+                    '--',
+                    mnt,
+                    ],
+                )

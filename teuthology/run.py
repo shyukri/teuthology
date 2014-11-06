@@ -8,7 +8,6 @@ from traceback import format_tb
 
 import teuthology
 from . import report
-from .job_status import get_status
 from .misc import get_user
 from .misc import read_config
 from .nuke import nuke
@@ -139,10 +138,6 @@ def main(ctx):
     if ctx.description is not None:
         ctx.summary['description'] = ctx.description
 
-    if not 'tasks' in ctx.config:
-        log.warning('No tasks specified. Continuing anyway...')
-        ctx.config['tasks'] = []
-
     for task in ctx.config['tasks']:
         msg = ('kernel installation shouldn be a base-level item, not part ' +
                'of the tasks list')
@@ -190,9 +185,7 @@ def main(ctx):
     try:
         run_tasks(tasks=ctx.config['tasks'], ctx=ctx)
     finally:
-        status = get_status(ctx.summary)
-        passed = status == 'pass'
-        if not passed and bool(ctx.config.get('nuke-on-error')):
+        if not ctx.summary.get('success') and bool(ctx.config.get('nuke-on-error')):
             # only unlock if we locked them in the first place
             nuke(ctx, ctx.lock)
         if ctx.archive is not None:
@@ -203,7 +196,7 @@ def main(ctx):
             log.info('Summary data:\n%s' % f.getvalue())
         with contextlib.closing(StringIO.StringIO()) as f:
             if ('email-on-error' in ctx.config
-                    and not passed):
+                    and not ctx.summary.get('success', False)):
                 yaml.safe_dump(ctx.summary, f)
                 yaml.safe_dump(ctx.config, f)
                 emsg = f.getvalue()
@@ -214,8 +207,8 @@ def main(ctx):
 
         report.try_push_job_info(ctx.config, ctx.summary)
 
-        if passed:
-            log.info(status)
+        if ctx.summary.get('success', True):
+            log.info('pass')
         else:
-            log.info(str(status).upper())
+            log.info('FAIL')
             sys.exit(1)

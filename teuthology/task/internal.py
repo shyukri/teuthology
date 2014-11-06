@@ -15,7 +15,6 @@ from teuthology import lockstatus
 from teuthology import lock
 from teuthology import misc
 from teuthology import provision
-from teuthology.job_status import get_status, set_status
 from teuthology.config import config as teuth_config
 from teuthology.parallel import parallel
 from ..orchestra import cluster, remote, run
@@ -65,9 +64,6 @@ def lock_machines(ctx, config):
     new machines.  This is not called if the one has teuthology-locked
     machines and placed those keys in the Targets section of a yaml file.
     """
-    os_type = ctx.config.get('os_type')
-    os_version = ctx.config.get('os_version')
-    arch = ctx.config.get('arch')
     log.info('Locking machines...')
     assert isinstance(config[0], int), 'config[0] must be an integer'
     machine_type = config[1]
@@ -88,11 +84,10 @@ def lock_machines(ctx, config):
                 raise RuntimeError('Error listing machines')
 
         # make sure there are machines for non-automated jobs to run
-        if len(machines) < to_reserve + how_many and ctx.owner.startswith('scheduled'):
+        if len(machines) <= to_reserve and ctx.owner.startswith('scheduled'):
             if ctx.block:
                 log.info(
-                    'waiting for more machines to be free (need %s + %s, have %s)...',
-                    to_reserve,
+                    'waiting for more machines to be free (need %s see %s)...',
                     how_many,
                     len(machines),
                 )
@@ -103,9 +98,7 @@ def lock_machines(ctx, config):
                            (to_reserve, how_many, len(machines)))
 
         newly_locked = lock.lock_many(ctx, how_many, machine_type, ctx.owner,
-                                      ctx.archive, os_type, os_version, arch)
-        if not newly_locked and not isinstance(newly_locked, list):
-            raise RuntimeError('Invalid parameters specified')
+                                      ctx.archive)
         if len(newly_locked) == how_many:
             vmlist = []
             for lmach in newly_locked:
@@ -151,7 +144,7 @@ def lock_machines(ctx, config):
         yield
     finally:
         if ctx.config.get('unlock_on_failure', False) or \
-                get_status(ctx.summary) == 'pass':
+           ctx.summary.get('success', False):
             log.info('Unlocking machines...')
             for machine in ctx.config['targets'].iterkeys():
                 lock.unlock_one(ctx, machine, ctx.owner)
@@ -169,7 +162,7 @@ def check_lock(ctx, config):
     """
     Check lock status of remote machines.
     """
-    if not teuth_config.lock_server or ctx.config.get('check-locks') is False:
+    if ctx.config.get('check-locks') == False:
         log.info('Lock checking disabled.')
         return
     log.info('Checking locks...')
@@ -220,6 +213,9 @@ def connect(ctx, config):
                 key = None
         except (AttributeError, KeyError):
             pass
+        if key.startswith('ssh-rsa ') or key.startswith('ssh-dss '):
+            if misc.is_vm(t):
+                key = None
         remotes.append(
             remote.Remote(name=t, host_key=key, keep_alive=True, console=None))
     ctx.cluster = cluster.Cluster()
@@ -234,8 +230,10 @@ def connect(ctx, config):
             ctx.cluster.add(rem, rem.name)
 
 
+@contextlib.contextmanager
 def push_inventory(ctx, config):
     if not teuth_config.lock_server:
+        yield
         return
 
     def push():
@@ -244,6 +242,7 @@ def push_inventory(ctx, config):
             lock.update_inventory(info)
     try:
         push()
+        yield
     except Exception:
         log.exception("Error pushing inventory")
 
@@ -324,12 +323,11 @@ def archive(ctx, config):
         yield
     except Exception:
         # we need to know this below
-        set_status(ctx.summary, 'fail')
+        ctx.summary['success'] = False
         raise
     finally:
-        passed = get_status(ctx.summary) == 'pass'
         if ctx.archive is not None and \
-                not (ctx.config.get('archive-on-error') and passed):
+                not (ctx.config.get('archive-on-error') and ctx.summary['success']):
             log.info('Transferring archived files...')
             logdir = os.path.join(ctx.archive, 'remote')
             if (not os.path.exists(logdir)):
@@ -420,7 +418,7 @@ def coredump(ctx, config):
                 )
             )
 
-        # set status = 'fail' if the dir is still there = coredumps were
+        # set success=false if the dir is still there = coredumps were
         # seen
         for rem in ctx.cluster.remotes.iterkeys():
             r = rem.run(
@@ -433,7 +431,7 @@ def coredump(ctx, config):
                 )
             if r.stdout.getvalue() != 'OK\n':
                 log.warning('Found coredumps on %s, flagging run as failed', rem)
-                set_status(ctx.summary, 'fail')
+                ctx.summary['success'] = False
                 if 'failure_reason' not in ctx.summary:
                     ctx.summary['failure_reason'] = \
                         'Found coredumps on {rem}'.format(rem=rem)
@@ -550,7 +548,7 @@ kern.* -{adir}/syslog/kern.log;RSYSLOG_FileFormat
             stdout = r.stdout.getvalue()
             if stdout != '':
                 log.error('Error in syslog on %s: %s', rem.name, stdout)
-                set_status(ctx.summary, 'fail')
+                ctx.summary['success'] = False
                 if 'failure_reason' not in ctx.summary:
                     ctx.summary['failure_reason'] = \
                         "'{error}' in syslog".format(error=stdout)
@@ -582,10 +580,6 @@ def vm_setup(ctx, config):
     """
     Look for virtual machines and handle their initialization
     """
-    all_tasks = [x.keys()[0] for x in ctx.config['tasks']]
-    need_chef = False
-    if 'chef' in all_tasks or 'kernel' in all_tasks:
-        need_chef = True
     with parallel() as p:
         editinfo = os.path.join(os.path.dirname(__file__),'edit_sudoers.sh')
         for rem in ctx.cluster.remotes.iterkeys():
@@ -600,12 +594,11 @@ def vm_setup(ctx, config):
                     _, err = p2.communicate()
                     if err:
                         log.info("Edit of /etc/sudoers failed: %s", err)
-                    if need_chef:
-                        p.spawn(_download_and_run_chef, rem)
+                    p.spawn(_handle_vm_init, rem)
 
-def _download_and_run_chef(remote_):
+def _handle_vm_init(remote_):
     """
-    Run ceph_qa_chef.
+    Initialize a remote vm by downloading and running ceph_qa_chef.
     """
     log.info('Running ceph_qa_chef on %s', remote_)
     remote_.run(args=['wget', '-q', '-O-',
@@ -613,3 +606,4 @@ def _download_and_run_chef(remote_):
             run.Raw('|'),
             'sh',
         ])
+

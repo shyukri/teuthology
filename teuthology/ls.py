@@ -3,8 +3,6 @@ import yaml
 import errno
 import re
 
-from .job_status import get_status
-
 
 def main(args):
     return ls(args.archive_dir, args.verbose)
@@ -49,11 +47,11 @@ def ls(archive_dir, verbose):
             else:
                 raise
 
-        print "{job} {status} {owner} {desc} {duration}s".format(
+        print "{job} {success} {owner} {desc} {duration}s".format(
             job=j,
             owner=summary.get('owner', '-'),
             desc=summary.get('description', '-'),
-            status=get_status(summary),
+            success='pass' if summary.get('success', False) else 'FAIL',
             duration=int(summary.get('duration', 0)),
         )
         if verbose and 'failure_reason' in summary:
