@@ -109,20 +109,26 @@ class TeuthologyConfig(YamlConfig):
         'archive_base': '/var/lib/teuthworker/archive',
         'automated_scheduling': False,
         'ceph_git_base_url': 'https://github.com/ceph/',
+        'lab_domain': 'suse.de',
         'lock_server': 'http://paddles.front.sepia.ceph.com/',
         'max_job_time': 259200,  # 3 days
         'results_server': 'http://paddles.front.sepia.ceph.com/',
         'src_base_path': os.path.expanduser('~/src'),
         'verify_host_keys': True,
-        'watchdog_interval': 500,
+        'watchdog_interval': 120,
     }
 
-    def __init__(self):
-        super(TeuthologyConfig, self).__init__(self.yaml_path)
+    def __init__(self, yaml_path=None):
+        super(TeuthologyConfig, self).__init__(yaml_path or self.yaml_path)
 
 
 class JobConfig(YamlConfig):
     pass
 
 
-config = TeuthologyConfig()
+system_config_path = '/etc/teuthology.yaml'
+if not os.path.exists(TeuthologyConfig.yaml_path) and \
+        os.path.exists(system_config_path):
+    config = TeuthologyConfig(yaml_path=system_config_path)
+else:
+    config = TeuthologyConfig()

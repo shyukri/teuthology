@@ -65,3 +65,23 @@ class ConnectionLostError(Exception):
         return "SSH connection was lost: {command!r}".format(
             command=self.command,
             )
+
+
+class ScheduleFailError(RuntimeError):
+    def __init__(self, message, name=None):
+        self.message = message
+        self.name = name
+
+    def __str__(self):
+        return "Job scheduling {name} failed: {msg}".format(
+            name=self.name,
+            msg=self.message,
+        ).replace('  ', ' ')
+
+
+class VersionNotFoundError(Exception):
+    def __init__(self, url):
+        self.url = url
+
+    def __str__(self):
+        return "Failed to fetch package version from %s" % self.url

@@ -2,6 +2,7 @@
 Support for paramiko remote objects.
 """
 from . import run
+from .opsys import OS
 import connection
 from teuthology import misc
 import time
@@ -38,6 +39,9 @@ class Remote(object):
         self.name = name
         if '@' in name:
             (self.user, hostname) = name.split('@')
+            # Temporary workaround for 'hostname --fqdn' not working on some
+            # machines
+            self._hostname = hostname
         else:
             # os.getlogin() doesn't work on non-login shells. The following
             # should work on any unix system
@@ -245,17 +249,22 @@ class Remote(object):
         self.remove(remote_temp_path)
 
     @property
-    def distro(self):
-        if not hasattr(self, '_distro'):
-            lsb_info = self.run(args=['lsb_release', '-a'], stdout=StringIO(),
+    def os(self):
+        if not hasattr(self, '_os'):
+            proc = self.run(args=['cat', '/etc/os-release'], stdout=StringIO(),
+                            stderr=StringIO(), check_status=False)
+            if proc.exitstatus == 0:
+                self._os = OS.from_os_release(proc.stdout.getvalue().strip())
+            else:
+                proc = self.run(args=['lsb_release', '-a'], stdout=StringIO(),
                                 stderr=StringIO())
-            self._distro = Distribution(lsb_info.stdout.getvalue().strip())
-        return self._distro
+                self._os = OS.from_lsb_release(proc.stdout.getvalue().strip())
+        return self._os
 
     @property
     def arch(self):
         if not hasattr(self, '_arch'):
-            proc = self.run(args=['uname', '-p'], stdout=StringIO())
+            proc = self.run(args=['uname', '-m'], stdout=StringIO())
             proc.wait()
             self._arch = proc.stdout.getvalue().strip()
         return self._arch
@@ -274,59 +283,11 @@ class Remote(object):
         node['name'] = self.hostname
         node['user'] = self.user
         node['arch'] = self.arch
-        node['os_type'] = self.distro.name
-        node['os_version'] = self.distro.release
+        node['os_type'] = self.os.name
+        node['os_version'] = self.os.version
         node['ssh_pub_key'] = self.host_key
         node['up'] = True
         return node
-
-
-class Distribution(object):
-    """
-    Parse 'lsb_release -a' output and populate attributes
-
-    Given output like:
-        Distributor ID: Ubuntu
-        Description:    Ubuntu 12.04.4 LTS
-        Release:        12.04
-        Codename:       precise
-
-    Attributes will be:
-        distributor = 'Ubuntu'
-        description = 'Ubuntu 12.04.4 LTS'
-        release = '12.04'
-        codename = 'precise'
-    Additionally, a few convenience attributes will be set:
-        name = 'ubuntu'
-        package_type = 'deb'
-    """
-
-    __slots__ = ['_lsb_release_str', '__expr', 'distributor', 'description',
-                 'release', 'codename', 'name', 'package_type']
-
-    def __init__(self, lsb_release_str):
-        self._lsb_release_str = lsb_release_str.strip()
-        self.distributor = self._get_match("Distributor ID:\s*(.*)")
-        self.name = self.distributor.lower()
-        self.description = self._get_match("Description:\s*(.*)")
-        self.release = self._get_match("Release:\s*(.*)")
-        self.codename = self._get_match("Codename:\s*(.*)")
-
-        if self.distributor in ['Ubuntu', 'Debian']:
-            self.package_type = "deb"
-        elif self.distributor in ['CentOS', 'Fedora', 'RedHatEnterpriseServer',
-                                  'openSUSE project', 'SUSE LINUX']:
-            self.package_type = "rpm"
-
-    def _get_match(self, regex):
-        match = re.search(regex, self._lsb_release_str)
-        if match:
-            return match.groups()[0]
-        return ''
-
-    def __str__(self):
-        return " ".join([self.distributor, self.release,
-                         self.codename]).strip()
 
 
 def getShortName(name):

@@ -19,7 +19,7 @@ from tempfile import NamedTemporaryFile
 import teuthology
 from . import lock
 from .config import config, JobConfig
-from .exceptions import BranchNotFoundError
+from .exceptions import BranchNotFoundError, ScheduleFailError
 from .repo_utils import fetch_qa_suite, fetch_teuthology
 
 log = logging.getLogger(__name__)
@@ -38,6 +38,9 @@ def main(args):
     kernel_flavor = args['--flavor']
     teuthology_branch = args['--teuthology-branch']
     machine_type = args['--machine-type']
+    if 'multi' in machine_type:
+        schedule_fail("'multi' is not a valid machine_type. " +
+                      "Maybe you want 'plana,mira,burnupi' or similar")
     distro = args['--distro']
     suite_branch = args['--suite-branch']
     suite_dir = args['--suite-dir']
@@ -71,6 +74,11 @@ def main(args):
         job_config.email = config.results_email
     if owner:
         job_config.owner = owner
+
+    # Interpret any relative paths as being relative to ceph-qa-suite (absolute
+    # paths are unchanged by this)
+    base_yaml_paths = [os.path.join(suite_repo_path, b) for b in
+                       base_yaml_paths]
 
     with NamedTemporaryFile(prefix='schedule_suite_',
                             delete=False) as base_yaml:
@@ -178,15 +186,6 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
             ver=ceph_version))
     log.info("ceph version: {ver}".format(ver=ceph_version))
 
-    # Decide what branch of s3-tests to use
-    if get_branch_info('s3-tests', ceph_branch):
-        s3_branch = ceph_branch
-    else:
-        log.info("branch {0} not in s3-tests.git; will use master for"
-                 " s3-tests".format(ceph_branch))
-        s3_branch = 'master'
-    log.info("s3-tests branch: %s", s3_branch)
-
     if teuthology_branch:
         if not get_branch_info('teuthology', teuthology_branch):
             exc = BranchNotFoundError(teuthology_branch, 'teuthology.git')
@@ -219,7 +218,6 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
         teuthology_branch=teuthology_branch,
         machine_type=machine_type,
         distro=distro,
-        s3_branch=s3_branch,
     )
     conf_dict = substitute_placeholders(dict_templ, config_input)
     #conf_dict.update(kernel_dict)
@@ -304,18 +302,6 @@ def schedule_fail(message, name=''):
         smtp.sendmail(msg['From'], [msg['To']], msg.as_string())
         smtp.quit()
     raise ScheduleFailError(message, name)
-
-
-class ScheduleFailError(RuntimeError):
-    def __init__(self, message, name=None):
-        self.message = message
-        self.name = name
-
-    def __str__(self):
-        return "Job scheduling {name} failed: {msg}".format(
-            name=self.name,
-            msg=self.message,
-        ).replace('  ', ' ')
 
 
 def get_worker(machine_type):
@@ -451,7 +437,6 @@ def schedule_suite(job_config,
     schedule one suite.
     returns number of jobs scheduled
     """
-    machine_type = job_config.machine_type
     suite_name = job_config.suite
     count = 0
     log.debug('Suite %s in %s' % (suite_name, path))
@@ -467,12 +452,12 @@ def schedule_suite(job_config,
                     limit=limit))
             break
         if filter_in:
-            if not filter_in in description:
+            if filter_in not in description:
                 if all([x.find(filter_in) < 0 for x in fragment_paths]):
                     continue
         if filter_out:
-            if filter_out in description or any([filter_out in z
-                    for z in fragment_paths]):
+            if filter_out in description or any([filter_out in z for z in
+                                                 fragment_paths]):
                 continue
 
         raw_yaml = '\n'.join([file(a, 'r').read() for a in fragment_paths])
@@ -489,14 +474,6 @@ def schedule_suite(job_config,
         if exclude_os_type and exclude_os_type == os_type:
             log.info('Skipping due to excluded_os_type: %s facets %s',
                      exclude_os_type, description)
-            continue
-        # We should not run multiple tests (changing distros) unless the
-        # machine is a VPS.
-        # Re-imaging baremetal is not yet supported.
-        if machine_type != 'vps' and os_type and os_type != 'ubuntu':
-            log.info(
-                'Skipping due to non-ubuntu on baremetal facets %s',
-                description)
             continue
 
         log.info(
@@ -527,8 +504,8 @@ def schedule_suite(job_config,
             )
         count += 1
     log.info('Suite %s in %s scheduled %d jobs.' % (suite_name, path, count))
-    log.info('Suite %s in %s -- %d jobs were filtered out.' % (suite_name,
-              path, len(configs) - count))
+    log.info('Suite %s in %s -- %d jobs were filtered out.' %
+             (suite_name, path, len(configs) - count))
     return count
 
 
@@ -720,9 +697,6 @@ dict_templ_old = {
             'ceph': {
                 'sha1': Placeholder('ceph_hash'),
             }
-        },
-        's3tests': {
-            'branch': Placeholder('s3_branch'),
         },
         'workunit': {
             'sha1': Placeholder('ceph_hash'),

@@ -8,10 +8,12 @@ beanstalkc >= 0.2.0
 boto >= 2.0b4
 bunch >= 1.0.0
 configobj
+# Require a new-ish six - only for configobj
+six >= 1.5.0
 httplib2
 paramiko < 1.8
 pexpect
-requests >= 1.0
+requests >= 2.3.0
 raven
 web.py
 docopt

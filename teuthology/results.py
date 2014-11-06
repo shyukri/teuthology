@@ -10,6 +10,7 @@ from textwrap import fill
 import teuthology
 from teuthology import misc
 from teuthology import ls
+from .job_status import get_status
 from .report import ResultsSerializer
 
 log = logging.getLogger(__name__)
@@ -54,7 +55,8 @@ def results(args):
         if args.email:
             email_results(
                 subject=subject,
-                from_=args.teuthology_config['results_sending_email'],
+                from_=args.teuthology_config.get('results_sending_email',
+                                                 'teuthology'),
                 to=args.email,
                 body=body,
             )
@@ -63,8 +65,15 @@ def results(args):
 
 
 def generate_coverage(args):
-    log.info('skipping coverage generation')
-    return
+    coverage_config_keys = ('coverage_output_dir', 'coverage_html_dir',
+                            'coverage_tools_dir')
+    for key in coverage_config_keys:
+        if key not in args.teuthology_config:
+            log.warn(
+                "'%s' not in teuthology config; skipping coverage report",
+                key)
+            return
+    log.info('starting coverage generation')
     subprocess.Popen(
         args=[
             os.path.join(os.path.dirname(sys.argv[0]), 'teuthology-coverage'),
@@ -131,7 +140,7 @@ def build_email_body(name, archive_dir, timeout):
         with file(summary_file) as f:
             summary = yaml.safe_load(f)
 
-        if summary['success']:
+        if get_status(summary) == 'pass':
             passed[job] = email_templates['pass_templ'].format(
                 job_id=job,
                 desc=summary.get('description'),

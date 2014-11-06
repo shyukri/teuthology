@@ -133,10 +133,41 @@ def task(ctx, config):
         for id_, remote in clients:
             log.debug('Unexporting client client.{id}...'.format(id=id_))
             mnt = os.path.join(teuthology.get_testdir(ctx), 'mnt.{id}'.format(id=id_))
-            remote.run(
-                args=[
-                    'sudo',
-                    'exportfs',
-                    '-au',
-                    ],
-                )
+            try:
+                log.debug('Checking active files on mount {mnt}'.format(mnt=mnt))
+                remote.run(
+                    args=[
+                        'sudo',
+                        'lsof', '-V', '+D',
+                        '{mnt}'.format(mnt=mnt),
+                        ],
+                    check_status=False
+                    )
+            finally:
+                remote.run(
+                    args=[
+                        'sudo',
+                        'exportfs',
+                        '-au',
+                        ],
+                    )
+                remote.run(
+                    args=[
+                        'sudo',
+                        'rpc.nfsd',
+                        '0',
+                        ],
+                    )
+                remote.run(
+                    args=[
+                        'sudo',
+                        'exportfs',
+                        '-f',
+                        ],
+                    )
+                log.debug('Syncing client client.{id}'.format(id=id_))
+                remote.run(
+                    args=[
+                        'sync'
+                        ]
+                    )

@@ -9,6 +9,7 @@ import os
 import time
 import requests
 import urllib
+from distutils.spawn import find_executable
 
 import teuthology
 from . import misc
@@ -23,6 +24,78 @@ logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(
 
 is_vpm = lambda name: 'vpm' in name
 
+def get_distro_from_downburst():
+    """
+    Return a table of valid distros.
+
+    If downburst is in path use it.  If either downburst is unavailable,
+    or if downburst is unable to produce a json list, then use a default
+    table.
+    """
+    default_table = {u'rhel_minimal': [u'6.4', u'6.5'],
+                     u'fedora': [u'17', u'18', u'19', u'20'],
+                     u'centos': [u'6.3', u'6.4', u'6.5', u'7.0'],
+                     u'opensuse': [u'12.2'],
+                     u'rhel': [u'6.3', u'6.4', u'6.5', u'7.0', u'7beta'],
+                     u'centos_minimal': [u'6.4', u'6.5'],
+                     u'ubuntu': [u'8.04(hardy)', u'9.10(karmic)',
+                                 u'10.04(lucid)', u'10.10(maverick)',
+                                 u'11.04(natty)', u'11.10(oneiric)',
+                                 u'12.04(precise)', u'12.10(quantal)',
+                                 u'13.04(raring)', u'13.10(saucy)',
+                                 u'14.04(trusty)', u'utopic(utopic)'],
+                     u'sles': [u'11-sp2'],
+                     u'debian': [u'6.0', u'7.0']}
+    executable_cmd = find_executable('downburst')
+    if not executable_cmd:
+        log.info('Using default values for supported os_type/os_version')
+        return default_table
+    try:
+        output = subprocess.check_output([executable_cmd, 'list-json'])
+        downburst_data = json.loads(output)
+        return downburst_data
+    except (subprocess.CalledProcessError, OSError):
+        log.info('Using default values for supported os_type/os_version')
+        return default_table
+
+
+def vps_version_or_type_valid(machine_type, os_type, os_version):
+    """
+    Check os-type and os-version parameters when locking a vps.
+    Os-type will always be set (defaults to ubuntu).
+
+    In the case where downburst does not handle list-json (an older version
+    of downburst, for instance), a message is printed and this checking
+    is skipped (so that this code should behave as it did before this
+    check was added).
+    """
+    if not machine_type == 'vps':
+        return True
+    valid_os_and_version = get_distro_from_downburst()
+    if os_type not in valid_os_and_version:
+        log.error('os-type is invalid')
+        return False
+    if not validate_distro_version(os_version,
+                                   valid_os_and_version[os_type]):
+        log.error("os-version '%s' is invalid", os_version)
+        return False
+    return True
+
+def validate_distro_version(version, supported_versions):
+    """
+    Return True if the version is valid.  For Ubuntu, possible
+    supported version values are of the form '12.04 (precise)' where
+    either the number of the version name is acceptable.
+    """
+    if version in supported_versions:
+        return True
+    for parts in supported_versions:
+        part = parts.split('(')
+        if len(part) == 2:
+            if version == part[0]:
+                return True
+            if version == part[1][0:len(part[1])-1]:
+                return True
 
 def main(ctx):
     if ctx.verbose:
@@ -88,18 +161,26 @@ def main(ctx):
         else:
             statuses = list_locks()
         vmachines = []
+        my_vmachines = []
 
-        for vmachine in statuses:
-            if vmachine['vm_host']:
-                if vmachine['locked']:
-                    vmachines.append(vmachine['name'])
+        for machine in statuses:
+            if machine['is_vm'] and machine['locked']:
+                vmachines.append(machine['name'])
+                # keep track of which are ours, so that if we don't
+                # specify machines, the update_keys below can only try
+                # ours
+                if machine['locked_by'] == user:
+                    my_vmachines.append(machine['name'])
         if vmachines:
             # Avoid ssh-keyscans for everybody when listing all machines
-            # Listing specific machines will update the keys.
-            if machines:
-                do_update_keys(vmachines)
-                statuses = [get_status(machine)
-                            for machine in machines]
+            # Listing specific machines will update the keys, and if none
+            # are specified, my_vmachines will also be updated (if any)
+            if machines or not ctx.all:
+                if my_vmachines:
+                    do_update_keys(my_vmachines)
+                if machines:
+                    statuses = [get_status(machine)
+                                for machine in machines]
             else:
                 statuses = list_locks()
         if statuses:
@@ -158,6 +239,10 @@ def main(ctx):
         return 0
 
     elif ctx.lock:
+        if not vps_version_or_type_valid(ctx.machine_type, ctx.os_type,
+                                         ctx.os_version):
+            log.error('Invalid os-type or version detected -- lock failed')
+            return 1
         for machine in machines:
             if not lock_one(machine, user, ctx.desc):
                 ret = 1
@@ -182,7 +267,7 @@ def main(ctx):
                 machines_to_update.append(machine)
     elif ctx.num_to_lock:
         result = lock_many(ctx, ctx.num_to_lock, ctx.machine_type, user,
-                           ctx.desc)
+                           ctx.desc, ctx.os_type, ctx.os_version)
         if not result:
             ret = 1
         else:
@@ -223,18 +308,49 @@ def main(ctx):
     return ret
 
 
-def lock_many(ctx, num, machinetype, user=None, description=None):
-    machinetypes = misc.get_multi_machine_types(machinetype)
+def lock_many(ctx, num, machine_type, user=None, description=None,
+              os_type=None, os_version=None, arch=None):
     if user is None:
         user = misc.get_user()
-    for machinetype in machinetypes:
+
+    if not vps_version_or_type_valid(ctx.machine_type, os_type, os_version):
+        log.error('Invalid os-type or version detected -- lock failed')
+        return
+
+    # In the for loop below we can safely query for all bare-metal machine_type
+    # values at once. So, if we're being asked for 'plana,mira,burnupi', do it
+    # all in one shot. If we are passed 'plana,mira,burnupi,vps', do one query
+    # for 'plana,mira,burnupi' and one for 'vps'
+    machine_types_list = misc.get_multi_machine_types(machine_type)
+    if machine_types_list == ['vps']:
+        machine_types = machine_types_list
+    elif 'vps' in machine_types_list:
+        machine_types_non_vps = list(machine_types_list)
+        machine_types_non_vps.remove('vps')
+        machine_types_non_vps = '|'.join(machine_types_non_vps)
+        machine_types = [machine_types_non_vps, 'vps']
+    else:
+        machine_types_str = '|'.join(machine_types_list)
+        machine_types = [machine_types_str, ]
+
+    for machine_type in machine_types:
         uri = os.path.join(config.lock_server, 'nodes', 'lock_many', '')
         data = dict(
             locked_by=user,
             count=num,
-            machine_type=machinetype,
+            machine_type=machine_type,
             description=description,
         )
+        # Only query for os_type/os_version if non-vps, since in that case we
+        # just create them.
+        if machine_type != 'vps':
+            if os_type:
+                data['os_type'] = os_type
+            if os_version:
+                data['os_version'] = os_version
+        if arch:
+            data['arch'] = arch
+        log.debug("lock_many request: %s", repr(data))
         response = requests.post(
             uri,
             data=json.dumps(data),
@@ -245,7 +361,7 @@ def lock_many(ctx, num, machinetype, user=None, description=None):
                         machine['ssh_pub_key'] for machine in response.json()}
             log.debug('locked {machines}'.format(
                 machines=', '.join(machines.keys())))
-            if machinetype == 'vps':
+            if machine_type == 'vps':
                 ok_machs = {}
                 for machine in machines:
                     if provision.create_if_vm(ctx, machine):
@@ -258,11 +374,11 @@ def lock_many(ctx, num, machinetype, user=None, description=None):
             return machines
         elif response.status_code == 503:
             log.error('Insufficient nodes available to lock %d %s nodes.',
-                      num, machinetype)
+                      num, machine_type)
             log.error(response.text)
         else:
             log.error('Could not lock %d %s nodes, reason: unknown.',
-                      num, machinetype)
+                      num, machine_type)
     return []
 
 
@@ -343,6 +459,7 @@ def list_locks(keyed_by_name=False, **kwargs):
         response = requests.get(uri)
     except requests.ConnectionError:
         success = False
+        log.exception("Could not contact lock server: %s", config.lock_server)
     else:
         success = response.ok
     if success:
@@ -351,7 +468,7 @@ def list_locks(keyed_by_name=False, **kwargs):
         else:
             return {node['name']: node
                     for node in response.json()}
-    return None
+    return dict()
 
 
 def update_lock(name, description=None, status=None, ssh_pub_key=None):
@@ -393,13 +510,17 @@ def update_inventory(node_dict):
     log.info("Updating %s on lock server", name)
     response = requests.put(
         uri,
-        json.dumps(node_dict))
+        json.dumps(node_dict),
+        headers={'content-type': 'application/json'},
+        )
     if response.status_code == 404:
         log.info("Creating new node %s on lock server", name)
         uri = os.path.join(config.lock_server, 'nodes', '')
         response = requests.post(
             uri,
-            json.dumps(node_dict))
+            json.dumps(node_dict),
+            headers={'content-type': 'application/json'},
+        )
     if not response.ok:
         log.error("Node update/creation failed for %s: %s",
                   name, response.text)
@@ -423,42 +544,39 @@ def ssh_keyscan(hostnames):
     p.wait()
 
     keys_dict = dict()
+    for line in p.stderr.readlines():
+        if not line.startswith('#'):
+            log.error(line)
     for line in p.stdout.readlines():
         host, key = line.strip().split(' ', 1)
         keys_dict[host] = key
     return keys_dict
 
 
-def updatekeys(ctx):
-    loglevel = logging.INFO
-    if ctx.verbose:
-        loglevel = logging.DEBUG
-
+def updatekeys(args):
+    loglevel = logging.DEBUG if args['--verbose'] else logging.INFO
     logging.basicConfig(
         level=loglevel,
     )
+    all_ = args['--all']
+    if all_:
+        machines = []
+    elif args['<machine>']:
+        machines = [misc.canonicalize_hostname(m, user=None)
+                    for m in args['<machine>']]
+    elif args['--targets']:
+        targets = args['--targets']
+        with file(targets) as f:
+            docs = yaml.safe_load_all(f)
+            for doc in docs:
+                machines = [n for n in doc.get('targets', dict()).iterkeys()]
 
-    misc.read_config(ctx)
-
-    machines = [misc.canonicalize_hostname(m, user=None) for m in ctx.machines]
-
-    if ctx.targets:
-        try:
-            with file(ctx.targets) as f:
-                g = yaml.safe_load_all(f)
-                for new in g:
-                    if 'targets' in new:
-                        for t in new['targets'].iterkeys():
-                            machines.append(t)
-        except IOError as e:
-            raise argparse.ArgumentTypeError(str(e))
-
-    return do_update_keys(machines)
+    return do_update_keys(machines, all_)
 
 
-def do_update_keys(machines):
+def do_update_keys(machines, all_=False):
     reference = list_locks(keyed_by_name=True)
-    if not machines:
+    if all_:
         machines = reference.keys()
     keys_dict = ssh_keyscan(machines)
     return push_new_keys(keys_dict, reference)
