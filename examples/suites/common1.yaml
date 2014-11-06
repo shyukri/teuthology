@@ -1,8 +1,4 @@
 check-locks: false
 nuke-on-error: false
 unlock_on_failure: true
-os_type: SLE12--RC3
-overrides:
-  workunit:
-    branch: firefly
-
+os_version: 12
