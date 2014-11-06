@@ -60,11 +60,15 @@ def canonicalize_hostname(hostname, user='jenkins'):
 
     ret = '{user_at}{short}.{lab_domain}'.format(
         user_at=user_at,
-        short=shortname)
+        short=shortname,
+        lab_domain=config.lab_domain,
+    )
     return ret
 
 
 def decanonicalize_hostname(hostname):
+    hostname_expr = hostname_expr_templ.format(
+        lab_domain=config.lab_domain.replace('.', '\.'))
     match = re.match(hostname_expr, hostname)
     if match:
         hostname = match.groupdict()['shortname']

@@ -122,7 +122,7 @@ def main(ctx):
             # last-in-suite jobs don't have suite_branch or branch set.
             ceph_branch = job_config.get('branch', 'master')
             suite_branch = job_config.get('suite_branch', ceph_branch)
-            job_config['suite_path'] = '/home/jenkins/src/ceph-qa-suite_master1'#fetch_qa_suite(suite_branch)
+            job_config['suite_path'] = '/home/jenkins/src/ceph-qa-suite_firefly'#fetch_qa_suite(suite_branch)
         except BranchNotFoundError:
             log.exception(
                 "Branch not found; throwing job away")
@@ -132,7 +132,7 @@ def main(ctx):
                                    job_config['job_id'])
             continue
 
-        teuth_bin_path = '/home/jenkins/.virtualenvs/teuthology/bin'#os.path.join(teuth_path, 'virtualenv', 'bin')
+        teuth_bin_path = '/home/jenkins/.virtualenv/bin'#os.path.join(teuth_path, 'virtualenv', 'bin')
         if not os.path.isdir(teuth_bin_path):
             raise RuntimeError("teuthology branch %s at %s not bootstrapped!" %
                                (teuthology_branch, teuth_bin_path))
