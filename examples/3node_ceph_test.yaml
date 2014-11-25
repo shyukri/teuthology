@@ -1,7 +1,5 @@
 check-locks: false
 interactive-on-error: true
-job_id: 4
-name: atest1
 roles:
 - [osd.0, client.0]
 - [mon.0, osd.1]
@@ -14,4 +12,3 @@ tasks:
     clients:
       client.0:
         - rbd/run_cli_tests.sh
-        - cls

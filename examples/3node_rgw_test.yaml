@@ -1,10 +1,11 @@
+interactive-on-error: true
 check-locks: false
 overrides:
   ceph:
     fs: xfs
 roles:
 - - mon.a
-  - osd.0                                                                                                                                                                                       
+  - osd.0                                                                                                                                                                                    
 - - client.0                                                                                                                                                                                    
 - - osd.1                                                                                                                                                                                       
 tasks:                                                                                                                                                                                          
@@ -12,4 +13,5 @@ tasks:
 - ceph: null
 - rgw:
   - client.0
+- interactive:
 - radosgw-admin:

@@ -1,7 +1,6 @@
 check-locks: false
 interactive-on-error: true
 name: autoevtest
-job_id: 005
 os_type: SLE12
 email: ksharma@suse.de
 roles:
@@ -16,4 +15,3 @@ tasks:
     clients:
       client.0:
         - rbd/run_cli_tests.sh
-- interactive:

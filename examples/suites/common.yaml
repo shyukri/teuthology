@@ -1,11 +1,7 @@
 check-locks: false
 nuke-on-error: false
 unlock_on_failure: true
-os_type: SLE12--RC3
+os_version: 12
 overrides:
   workunit:
     branch: firefly
-roles:
-- [mon.a, mon.c, osd.0, osd.1, osd.2]
-- [mon.b, mds.a, osd.3, osd.4, osd.5]
-- [client.0]

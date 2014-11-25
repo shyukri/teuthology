@@ -1,0 +1,18 @@
+interactive-on-error: true
+check-locks: false
+overrides:
+  ceph:
+    fs: ext4
+roles:
+- - mon.a
+  - osd.0                                                                                                                                                                                       
+- - client.0                                                                                                                                                                                    
+- - osd.1
+  - osd.2                                                                                                                                                                                       
+tasks:                                                                                                                                                                                          
+- install:
+- ceph: 
+- workunit:
+    clients:
+      client.0:
+        - rbd/import_export.sh

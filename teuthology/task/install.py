@@ -25,6 +25,7 @@ rpm_packages = {'ceph': [
     'ceph-devel',
     'ceph',
     'ceph-fuse',
+    'ceph-deploy',
     #'rest-bench',
     #'libcephfs_jni1',
     'libcephfs1',
