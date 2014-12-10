@@ -32,25 +32,7 @@ rpm_packages = {'ceph': [
     'python-ceph',
 ]}
 
-deb_packages = {'ceph': [
-    'ceph',
-    'ceph-dbg',
-    'ceph-mds',
-    'ceph-mds-dbg',
-    'ceph-common',
-    'ceph-common-dbg',
-    'ceph-fuse',
-    'ceph-fuse-dbg',
-    'ceph-test',
-    'ceph-test-dbg',
-    'radosgw',
-    'radosgw-dbg',
-    'python-ceph',
-    'libcephfs1',
-    'libcephfs1-dbg',
-    'libcephfs-java',
-]}
-
+rpm_extras_packages = ['rbd-kmp-default','qemu-block-rbd','qemu-tools']
 
 def _run_and_log_error_if_fails(remote, args):
     """
@@ -629,6 +611,8 @@ def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
             'download.suse.de/ibs/Devel:/Storage:/0.5:/Staging/')
     baseurl = host+baseparms
     _add_repo(remote,baseurl,'ceph')
+    _add_repo(remote,'http://download.suse.de/ibs/Devel:/Storage:/1.0:/SLES12/SLE_12/','ceph_extras')
+
     
     for pkg in rpm:
         pk_err_mess = StringIO()
@@ -636,7 +620,11 @@ def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
                     '--no-gpg-checks', '--quiet', 'install', pkg, ],
                     stderr=pk_err_mess)
     
-    
+    for pkg in rpm_extras_packages:
+        pk_err_mess = StringIO()
+        remote.run(args=['sudo', 'zypper', '--non-interactive',
+                    '--no-gpg-checks', '--quiet', 'in', '-r', 'ceph_extras',pkg, ],
+                    stderr=pk_err_mess) 
     
     
     
