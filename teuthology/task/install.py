@@ -30,6 +30,8 @@ rpm_packages = {'ceph': [
     #'libcephfs_jni1',
     'libcephfs1',
     'python-ceph',
+    'rbd-fuse',
+    'python-radosgw-agent',
 ]}
 
 rpm_extras_packages = ['rbd-kmp-default','qemu-block-rbd','qemu-tools']
