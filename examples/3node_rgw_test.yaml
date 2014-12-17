@@ -13,5 +13,4 @@ tasks:
 - ceph: null
 - rgw:
   - client.0
-- interactive:
 - radosgw-admin:

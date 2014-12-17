@@ -32,6 +32,7 @@ rpm_packages = {'ceph': [
     'python-ceph',
     'rbd-fuse',
     'python-radosgw-agent',
+    'python-virtualenv',
 ]}
 
 rpm_extras_packages = ['rbd-kmp-default','qemu-block-rbd','qemu-tools']
@@ -455,6 +456,22 @@ def _remove_sources_list_rpm(remote, proj):
     :param remote: the teuthology.orchestra.remote.Remote object
     :param proj: the project whose sources.list needs removing
     """
+
+    remote.run(
+        args=[
+            'sudo', 'zypper', '--non-interactive', 'rm', run.Raw('$('),
+             'zypper', '--disable-system-resolvables', '-s',
+             '0', 'packages', '-r', '{proj}'.format(proj=proj), run.Raw('|'), 'tail', 
+             '-n', run.Raw('+4'), run.Raw('|'), 'cut', run.Raw("-d'|'"), 
+             run.Raw('-f3'), run.Raw('|'), 'sort', '-u', run.Raw(')'),
+             run.Raw('||'),
+             'true',
+        ],
+        stdout=StringIO(),
+    )
+
+
+
     remote.run(
         args=[
             'sudo', 'rm', '-f', '/etc/zypp/repos.d/{proj}.repo'.format(
