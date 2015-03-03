@@ -42,7 +42,7 @@ def generic_mkfs(ctx, config, devname_rtn):
             properties = {}
         (remote,) = ctx.cluster.only(role).remotes.keys()
         image = properties.get('image_name', default_image_name(role))
-        fs_type = properties.get('fs_type', 'ext3')
+        fs_type = properties.get('fs_type', 'xfs')
         remote.run(
             args=[
                 'sudo',

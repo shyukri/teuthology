@@ -19,11 +19,11 @@ RELEASE = "1-0"
 # This is intended to be a complete listing of ceph packages. If we're going
 # to hardcode this stuff, I don't want to do it in more than once place.
 rpm_packages = {'ceph': [
+    'ceph',
     'ceph-debuginfo',
     'ceph-radosgw',
     'ceph-test',
     'ceph-devel',
-    'ceph',
     'ceph-fuse',
     'ceph-deploy',
     #'rest-bench',
@@ -470,6 +470,20 @@ def _remove_sources_list_rpm(remote, proj):
         stdout=StringIO(),
     )
 
+    if proj == 'ceph':
+        remote.run(
+        args=[
+            'sudo', 'zypper', '--non-interactive', 'rm', run.Raw('$('),
+             'zypper', '--disable-system-resolvables', '-s',
+             '0', 'packages', '-r', 'ceph_extras', run.Raw('|'), 'tail',
+             '-n', run.Raw('+4'), run.Raw('|'), 'cut', run.Raw("-d'|'"),
+             run.Raw('-f3'), run.Raw('|'), 'sort', '-u', run.Raw(')'),
+             run.Raw('||'),
+             'true',
+        ],
+        stdout=StringIO(),
+        )
+
 
 
     remote.run(
@@ -592,7 +606,6 @@ def _get_os_version(ctx, remote, config):
     return retval
     
     
-    
 def _add_repo(remote,baseurl,reponame):
     err_mess = StringIO()
     try:
@@ -620,6 +633,85 @@ def _add_repo(remote,baseurl,reponame):
     )
 
 
+def _setRepoPriority(remote, reponame, pnum):
+    err_mess = StringIO()
+    r = remote.run(
+        args=['sudo', 'zypper', 'mr', '-p',
+               pnum, reponame],
+        stdout=StringIO(),
+    )
+    r = remote.run(
+        args=['sudo', 'zypper', 'ref',
+               '-f'],
+        stdout=StringIO(),
+    )
+
+
+
+def _downloadISOAddRepo(remote,baseurl,reponame,iso_name=None, is_internal=False):
+    err_mess = StringIO()
+    try:
+        remote.run(args=['sudo', 'zypper', 'removerepo', reponame, ], stderr=err_mess, )
+    except Exception:
+        cmp_msg = 'Repository ceph not found by alias, number or URI.'
+        if cmp_msg != err_mess.getvalue().strip():
+            raise
+
+    if iso_name == None:
+        if is_internal==False:
+            r = remote.run(
+               args=['wget', '-q', '-O-', baseurl, run.Raw('|'), 'grep', run.Raw('Storage'), run.Raw('|'), 'grep', run.Raw('"DVD1\|Media1"'),
+               run.Raw('|'), 'sed', '-e', run.Raw(' "s|.*SUSE-\(.*\)iso\(.*\)|\\1|" ')],
+               stdout=StringIO(),
+            )
+        else:
+           r = remote.run(
+               args=['wget', '-q', '-O-', baseurl, run.Raw('|'), 'grep', run.Raw('Storage'), run.Raw('|'), 'grep', run.Raw('Internal'),
+               run.Raw('|'), 'sed', '-e', run.Raw(' "s|.*SUSE-\(.*\)iso\(.*\)|\\1|" ')],
+               stdout=StringIO(),
+           )
+
+
+        builds = r.stdout.getvalue().strip().split('\n')
+        build_version = builds[len(builds)-1]
+        iso_name = 'SUSE-'+build_version+'iso'
+
+    log.info('ISO name  is - '+iso_name)
+    iso_path = '/tmp/%s' % (iso_name)
+    try:
+         r = remote.run(
+             args=['sudo', 'rm', iso_path],
+             stdout=StringIO(),
+         )
+    except Exception:
+         log.info('old ISO was not present in /tmp. nothing to delete.')
+     
+    iso_download_path = baseurl+'/'+iso_name
+    r = remote.run(
+         args=['wget', iso_download_path, '-P', '/tmp'],
+         stdout=StringIO(),
+    )
+
+    iso_uri = 'iso:///?iso=%s'% (iso_path)
+    log.info('ISO uri  is - '+iso_uri)
+
+    r = remote.run(
+        args=['sudo', 'zypper', 'ar', iso_uri, reponame],
+        stdout=StringIO(),
+    )
+
+    r = remote.run(
+        args=['sudo', 'zypper', '--gpg-auto-import-keys',
+               '--non-interactive', 'refresh'],
+        stdout=StringIO(),
+    )
+
+
+
+
+
+
+
 
     
 def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
@@ -629,22 +721,24 @@ def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
     host = ctx.teuthology_config.get('gitbuilder_host',
             'download.suse.de/ibs/Devel:/Storage:/0.5:/Staging/')
     baseurl = host+baseparms
-    _add_repo(remote,baseurl,'ceph')
-    _add_repo(remote,'http://download.suse.de/ibs/Devel:/Storage:/1.0:/SLES12/SLE_12/','ceph_extras')
-
+    baseurl = host #temporary fix, will be changed soon
+    baseurl_extra = ctx.teuthology_config.get('gitbuilder_host_extra',
+            'http://download.suse.de/ibs/Devel:/Storage:/1.0/SLE_12/')
+    _downloadISOAddRepo(remote,baseurl,'ceph')
+    _downloadISOAddRepo(remote,baseurl_extra,'ceph_extras',iso_name=None, is_internal=True)
+    #_add_repo(remote,baseurl_extra,'ceph_extras')
+    _setRepoPriority(remote, 'ceph_extras', '100')
     
     for pkg in rpm:
         pk_err_mess = StringIO()
         remote.run(args=['sudo', 'zypper', '--non-interactive', 
-                    '--no-gpg-checks', '--quiet', 'install', pkg, ],
+                    '--no-gpg-checks', '--quiet', 'in',pkg, ],
                     stderr=pk_err_mess)
-    
     for pkg in rpm_extras_packages:
         pk_err_mess = StringIO()
         remote.run(args=['sudo', 'zypper', '--non-interactive',
                     '--no-gpg-checks', '--quiet', 'in', '-r', 'ceph_extras',pkg, ],
                     stderr=pk_err_mess) 
-    
     
     
     
