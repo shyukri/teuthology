@@ -1,9 +1,8 @@
-import os
-import requests
+from copy import deepcopy
 from datetime import datetime
-from pytest import raises, skip
 
-from teuthology.config import config
+from mock import patch, Mock
+
 from teuthology import suite
 
 
@@ -24,15 +23,6 @@ class TestSuiteOffline(object):
         name = suite.make_run_name('suite', 'ceph', 'kernel', 'flavor',
                                    'mtype', user='USER')
         assert name.startswith('USER-')
-
-    def test_distro_defaults_saya(self):
-        assert suite.get_distro_defaults('ubuntu', 'saya') == ('armv7l',
-                                                               'saucy', 'deb')
-
-    def test_distro_defaults_plana(self):
-        assert suite.get_distro_defaults('ubuntu', 'plana') == ('x86_64',
-                                                                'precise',
-                                                                'deb')
 
     def test_gitbuilder_url(self):
         ref_url = "http://gitbuilder.ceph.com/ceph-deb-squeeze-x86_64-basic/"
@@ -58,82 +48,197 @@ class TestSuiteOffline(object):
             suite.dict_templ['overrides']['admin_socket']['branch'],
             suite.Placeholder)
 
+    def test_null_placeholders_dropped(self):
+        input_dict = dict(
+            suite='suite',
+            suite_branch='suite_branch',
+            ceph_branch='ceph_branch',
+            ceph_hash='ceph_hash',
+            teuthology_branch='teuthology_branch',
+            machine_type='machine_type',
+            distro=None,
+        )
+        output_dict = suite.substitute_placeholders(suite.dict_templ,
+                                                    input_dict)
+        assert 'os_type' not in output_dict
 
-class TestSuiteOnline(object):
+    @patch('teuthology.suite.get_gitbuilder_url')
+    @patch('requests.get')
+    def test_get_hash_success(self, m_get, m_get_gitbuilder_url):
+        m_get_gitbuilder_url.return_value = "http://baseurl.com"
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.text = "the_hash"
+        m_get.return_value = mock_resp
+        result = suite.get_hash()
+        m_get.assert_called_with("http://baseurl.com/ref/master/sha1")
+        assert result == "the_hash"
+
+    @patch('teuthology.suite.get_gitbuilder_url')
+    @patch('requests.get')
+    def test_get_hash_fail(self, m_get, m_get_gitbuilder_url):
+        m_get_gitbuilder_url.return_value = "http://baseurl.com"
+        mock_resp = Mock()
+        mock_resp.ok = False
+        m_get.return_value = mock_resp
+        result = suite.get_hash()
+        assert result is None
+
+    @patch('teuthology.suite.get_gitbuilder_url')
+    @patch('requests.get')
+    def test_package_version_for_hash(self, m_get, m_get_gitbuilder_url):
+        m_get_gitbuilder_url.return_value = "http://baseurl.com"
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.text = "the_version"
+        m_get.return_value = mock_resp
+        result = suite.package_version_for_hash("hash")
+        m_get.assert_called_with("http://baseurl.com/sha1/hash/version")
+        assert result == "the_version"
+
+    @patch('requests.get')
+    def test_get_branch_info(self, m_get):
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = "some json"
+        m_get.return_value = mock_resp
+        result = suite.get_branch_info("teuthology", "master")
+        m_get.assert_called_with(
+            "https://api.github.com/repos/ceph/teuthology/git/refs/heads/master"
+        )
+        assert result == "some json"
+
+    @patch('teuthology.suite.lock')
+    def test_get_arch_fail(self, m_lock):
+        m_lock.list_locks.return_value = False
+        suite.get_arch('magna')
+        m_lock.list_locks.assert_called_with(machine_type="magna", count=1)
+
+    @patch('teuthology.suite.lock')
+    def test_get_arch_success(self, m_lock):
+        m_lock.list_locks.return_value = [{"arch": "arch"}]
+        result = suite.get_arch('magna')
+        m_lock.list_locks.assert_called_with(
+            machine_type="magna",
+            count=1
+        )
+        assert result == "arch"
+
+    def test_combine_path(self):
+        result = suite.combine_path("/path/to/left", "right/side")
+        assert result == "/path/to/left/right/side"
+
+    def test_combine_path_no_right(self):
+        result = suite.combine_path("/path/to/left", None)
+        assert result == "/path/to/left"
+
+
+class TestMissingPackages(object):
+    """
+    Tests the functionality that checks to see if a
+    scheduled job will have missing packages in gitbuilder.
+    """
     def setup(self):
-        if 'TEST_ONLINE' not in os.environ:
-            skip("To run these sets, set the environment variable TEST_ONLINE")
+        package_versions = dict(
+            sha1=dict(
+                ubuntu="1.0"
+            )
+        )
+        self.pv = package_versions
 
-    def test_ceph_hash_simple(self):
-        resp = requests.get(
-            'https://api.github.com/repos/ceph/ceph/git/refs/heads/master')
-        ref_hash = resp.json()['object']['sha']
-        assert suite.get_hash('ceph') == ref_hash
+    def test_os_in_package_versions(self):
+        assert self.pv == suite.get_package_versions(
+            "sha1",
+            "ubuntu",
+            package_versions=self.pv
+        )
 
-    def test_kernel_hash_saya(self):
-        # We don't currently have these packages.
-        assert suite.get_hash('kernel', 'master', 'basic', 'saya') is None
+    @patch("teuthology.suite.package_version_for_hash")
+    def test_os_not_in_package_versions(self, m_package_versions_for_hash):
+        m_package_versions_for_hash.return_value = "1.1"
+        result = suite.get_package_versions(
+            "sha1",
+            "rhel",
+            package_versions=self.pv
+        )
+        expected = deepcopy(self.pv)
+        expected['sha1'].update(dict(rhel="1.1"))
+        assert result == expected
 
-    def test_all_master_branches(self):
-        # Don't attempt to send email
-        config.results_email = None
-        job_config = suite.create_initial_config('suite', 'master',
-                                                 'master', 'master', 'testing',
-                                                 'basic', 'centos', 'plana')
-        assert ((job_config.branch, job_config.teuthology_branch,
-                 job_config.suite_branch) == ('master', 'master', 'master'))
+    @patch("teuthology.suite.package_version_for_hash")
+    def test_package_versions_not_found(self, m_package_versions_for_hash):
+        # if gitbuilder returns a status that's not a 200, None is returned
+        m_package_versions_for_hash.return_value = None
+        result = suite.get_package_versions(
+            "sha1",
+            "rhel",
+            package_versions=self.pv
+        )
+        assert result == self.pv
 
-    def test_config_bogus_kernel_branch(self):
-        # Don't attempt to send email
-        config.results_email = None
-        with raises(suite.ScheduleFailError):
-            suite.create_initial_config('s', None, 'master', 't',
-                                        'bogus_kernel_branch', 'f', 'd', 'm')
+    @patch("teuthology.suite.package_version_for_hash")
+    def test_no_package_versions_kwarg(self, m_package_versions_for_hash):
+        m_package_versions_for_hash.return_value = "1.0"
+        result = suite.get_package_versions(
+            "sha1",
+            "ubuntu",
+        )
+        expected = deepcopy(self.pv)
+        assert result == expected
 
-    def test_config_bogus_kernel_flavor(self):
-        # Don't attempt to send email
-        config.results_email = None
-        with raises(suite.ScheduleFailError):
-            suite.create_initial_config('s', None, 'master', 't', 'k',
-                                        'bogus_kernel_flavor', 'd', 'm')
+    def test_distro_has_packages(self):
+        result = suite.has_packages_for_distro(
+            "sha1",
+            "ubuntu",
+            package_versions=self.pv,
+        )
+        assert result
 
-    def test_config_bogus_ceph_branch(self):
-        # Don't attempt to send email
-        config.results_email = None
-        with raises(suite.ScheduleFailError):
-            suite.create_initial_config('s', None, 'bogus_ceph_branch', 't',
-                                        'k', 'f', 'd', 'm')
+    def test_distro_does_not_have_packages(self):
+        result = suite.has_packages_for_distro(
+            "sha1",
+            "rhel",
+            package_versions=self.pv,
+        )
+        assert not result
 
-    def test_config_bogus_suite_branch(self):
-        # Don't attempt to send email
-        config.results_email = None
-        with raises(suite.ScheduleFailError):
-            suite.create_initial_config('s', 'bogus_suite_branch', 'master',
-                                        't', 'k', 'f', 'd', 'm')
-
-    def test_config_bogus_teuthology_branch(self):
-        # Don't attempt to send email
-        config.results_email = None
-        with raises(suite.ScheduleFailError):
-            suite.create_initial_config('s', None, 'master',
-                                        'bogus_teuth_branch', 'k', 'f', 'd',
-                                        'm')
-
-    def test_config_substitution(self):
-        # Don't attempt to send email
-        config.results_email = None
-        job_config = suite.create_initial_config('MY_SUITE', 'master',
-                                                 'master', 'master', 'testing',
-                                                 'basic', 'centos', 'plana')
-        assert job_config['suite'] == 'MY_SUITE'
-
-    def test_config_kernel_section(self):
-        # Don't attempt to send email
-        config.results_email = None
-        job_config = suite.create_initial_config('MY_SUITE', 'master',
-                                                 'master', 'master', 'testing',
-                                                 'basic', 'centos', 'plana')
-        assert job_config['kernel']['kdb'] is True
+    @patch("teuthology.suite.get_package_versions")
+    def test_has_packages_no_package_versions(self, m_get_package_versions):
+        m_get_package_versions.return_value = self.pv
+        result = suite.has_packages_for_distro(
+            "sha1",
+            "rhel",
+        )
+        assert not result
 
 
-# maybe use notario for the above?
+class TestDistroDefaults(object):
+
+    def test_distro_defaults_saya(self):
+        assert suite.get_distro_defaults('ubuntu', 'saya') == ('armv7l',
+                                                               'saucy', 'deb')
+
+    def test_distro_defaults_plana(self):
+        assert suite.get_distro_defaults('ubuntu', 'plana') == ('x86_64',
+                                                                'precise',
+                                                                'deb')
+
+    def test_distro_defaults_debian(self):
+        assert suite.get_distro_defaults('debian', 'magna') == ('x86_64',
+                                                                'wheezy',
+                                                                'deb')
+
+    def test_distro_defaults_centos(self):
+        assert suite.get_distro_defaults('centos', 'magna') == ('x86_64',
+                                                                'centos6',
+                                                                'rpm')
+
+    def test_distro_defaults_fedora(self):
+        assert suite.get_distro_defaults('fedora', 'magna') == ('x86_64',
+                                                                'fedora20',
+                                                                'rpm')
+
+    def test_distro_defaults_default(self):
+        assert suite.get_distro_defaults('rhel', 'magna') == ('x86_64',
+                                                              'rhel7_0',
+                                                              'rpm')

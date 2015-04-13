@@ -145,7 +145,8 @@ def main(ctx):
             args = [
                 os.path.join(teuth_bin_path, 'teuthology-results'),
                 '--timeout',
-                str(job_config.get('results_timeout', 32400)),
+                str(job_config.get('results_timeout',
+                                   teuth_config.results_timeout)),
                 '--email',
                 job_config['email'],
                 '--archive-dir',
@@ -190,7 +191,8 @@ def run_with_watchdog(process, job_config):
             kill_job(job_info['name'], job_info['job_id'],
                      teuth_config.archive_base)
 
-        report.try_push_job_info(job_info, dict(status='running'))
+        # calling this without a status just updates the jobs updated time
+        report.try_push_job_info(job_info)
         time.sleep(teuth_config.watchdog_interval)
 
     # The job finished. Let's make sure paddles knows.

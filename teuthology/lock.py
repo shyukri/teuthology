@@ -6,7 +6,6 @@ import yaml
 import re
 import collections
 import os
-import time
 import requests
 import urllib
 
@@ -14,6 +13,7 @@ import teuthology
 from . import misc
 from . import provision
 from .config import config
+from .contextutil import safe_while
 from .lockstatus import get_status
 
 log = logging.getLogger(__name__)
@@ -22,6 +22,23 @@ logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(
     logging.WARNING)
 
 is_vpm = lambda name: 'vpm' in name
+
+
+
+def get_statuses(machines):
+    if machines:
+        statuses = []
+        for machine in machines:
+            machine = misc.canonicalize_hostname(machine)
+            status = get_status(machine)
+            if status:
+                statuses.append(status)
+            else:
+                log.error("Lockserver doesn't know about machine: %s" %
+                          machine)
+    else:
+        statuses = list_locks()
+    return statuses
 
 
 def main(ctx):
@@ -52,7 +69,7 @@ def main(ctx):
             '-f is only supported by --lock and --unlock'
     if machines:
         assert ctx.lock or ctx.unlock or ctx.list or ctx.list_targets \
-            or ctx.update, \
+            or ctx.update or ctx.brief, \
             'machines cannot be specified with that operation'
     else:
         assert ctx.num_to_lock or ctx.list or ctx.list_targets or \
@@ -72,21 +89,10 @@ def main(ctx):
     if ctx.brief or ctx.list or ctx.list_targets:
         assert ctx.desc is None, '--desc does nothing with --list/--brief'
 
-        if machines:
-            statuses = []
-            for machine in machines:
-                machine = misc.canonicalize_hostname(machine)
-                status = get_status(machine)
-                if status:
-                    statuses.append(status)
-                else:
-                    log.error("Lockserver doesn't know about machine: %s" %
-                              machine)
-            # Delete this variable to avoid linter errors when we redefine it
-            # in a list comprehension below
-            del machine
-        else:
-            statuses = list_locks()
+        # we may need to update host keys for vms.  Don't do it for
+        # every vm; however, update any vms included in the list given
+        # to the CLI (machines), or any owned by the specified owner or
+        # invoking user if no machines are specified.
         vmachines = []
 
         for vmachine in statuses:
@@ -194,8 +200,8 @@ def main(ctx):
                 )
                 if len(result) < ctx.num_to_lock:
                     log.error("Locking failed.")
-                    for machn in result:
-                        unlock_one(ctx, machn)
+                    for machine in result:
+                        unlock_one(ctx, machine, user)
                     ret = 1
                 else:
                     log.info("Successfully Locked:\n%s\n" % shortnames)
@@ -253,7 +259,7 @@ def lock_many(ctx, num, machinetype, user=None, description=None):
                     else:
                         log.error('Unable to create virtual machine: %s',
                                   machine)
-                        unlock_one(ctx, machine)
+                        unlock_one(ctx, machine, user)
                 return ok_machs
             return machines
         elif response.status_code == 503:
@@ -310,19 +316,17 @@ def unlock_many(names, user):
     return response.ok
 
 
-def unlock_one(ctx, name, user=None):
-    if user is None:
-        user = misc.get_user()
+def unlock_one(ctx, name, user, description=None):
     name = misc.canonicalize_hostname(name, user=None)
-    request = dict(name=name, locked=False, locked_by=user, description=None)
+    if not provision.destroy_if_vm(ctx, name, user, description):
+        log.error('downburst destroy failed for %s', name)
+    request = dict(name=name, locked=False, locked_by=user,
+                   description=description)
     uri = os.path.join(config.lock_server, 'nodes', name, 'lock', '')
     response = requests.put(uri, json.dumps(request))
     success = response.ok
     if success:
-        log.debug('unlocked %s', name)
-        if not provision.destroy_if_vm(ctx, name):
-            log.error('downburst destroy failed for %s', name)
-            log.info('%s is not locked' % name)
+        log.info('unlocked %s', name)
     else:
         try:
             reason = response.json().get('message')
@@ -354,14 +358,85 @@ def list_locks(keyed_by_name=False, **kwargs):
     return None
 
 
+def find_stale_locks(owner=None):
+    """
+    Return a list of node dicts corresponding to nodes that were locked to run
+    a job, but the job is no longer running. The purpose of this is to enable
+    us to nuke nodes that were left locked due to e.g. infrastructure failures
+    and return them to the pool.
+
+    :param owner: If non-None, return nodes locked by owner. Default is None.
+    """
+    def might_be_stale(node_dict):
+        """
+        Answer the question: "might this be a stale lock?"
+
+        The answer is yes if:
+            It is locked
+            It has a non-null description containing multiple '/' characters
+
+        ... because we really want "nodes that were locked for a particular job
+        and are still locked" and the above is currently the best way to guess.
+        """
+        desc = node_dict['description']
+        if (node_dict['locked'] is True and
+            desc is not None and desc.startswith('/') and
+                desc.count('/') > 1):
+            return True
+        return False
+
+    # Which nodes are locked for jobs?
+    nodes = list_locks()
+    if owner is not None:
+        nodes = [node for node in nodes if node['locked_by'] == owner]
+    nodes = filter(might_be_stale, nodes)
+
+    def node_job_is_active(node, cache):
+        """
+        Is this node's job active (e.g. running or waiting)?
+
+        :param node:  The node dict as returned from the lock server
+        :param cache: A set() used for caching results
+        :returns:     True or False
+        """
+        description = node['description']
+        if description in cache:
+            return True
+        (name, job_id) = description.split('/')[-2:]
+        url = os.path.join(config.results_server, 'runs', name, 'jobs', job_id,
+                           '')
+        resp = requests.get(url)
+        job_info = resp.json()
+        if job_info['status'] in ('running', 'waiting'):
+            cache.add(description)
+            return True
+        return False
+
+    result = list()
+    # Here we build the list of of nodes that are locked, for a job (as opposed
+    # to being locked manually for random monkeying), where the job is not
+    # running
+    active_jobs = set()
+    for node in nodes:
+        if node_job_is_active(node, active_jobs):
+            continue
+        result.append(node)
+    return result
+
+
 def update_lock(name, description=None, status=None, ssh_pub_key=None):
     name = misc.canonicalize_hostname(name, user=None)
-    status_info = get_status(name)
-    if status_info['is_vm']:
-        ssh_key = None
-        while not ssh_key:
-            time.sleep(10)
-            ssh_key = ssh_keyscan([name])
+    # Only do VM specific things (key lookup) if we are not
+    # Just updating the status (like marking down).
+    if not status:
+        status_info = get_status(name)
+        if status_info['is_vm']:
+            with safe_while(sleep=1, tries=15, _raise=False,
+                            action='ssh-keyscan') as proceed:
+                while proceed():
+                    ssh_key = ssh_keyscan([name])
+                    if ssh_key:
+                        break
     updated = {}
     if description is not None:
         updated['description'] = description
@@ -414,7 +489,7 @@ def ssh_keyscan(hostnames):
         raise TypeError("'hostnames' must be a list")
     hostnames = [misc.canonicalize_hostname(name, user=None) for name in
                  hostnames]
-    args = ['ssh-keyscan', '-t', 'rsa'] + hostnames
+    args = ['ssh-keyscan', '-T', '1', '-t', 'rsa'] + hostnames
     p = subprocess.Popen(
         args=args,
         stdout=subprocess.PIPE,

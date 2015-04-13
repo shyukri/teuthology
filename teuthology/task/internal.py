@@ -17,7 +17,9 @@ from teuthology import misc
 from teuthology import provision
 from teuthology.config import config as teuth_config
 from teuthology.parallel import parallel
+from teuthology.suite import has_packages_for_distro
 from ..orchestra import cluster, remote, run
+from .. import report
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +72,9 @@ def lock_machines(ctx, config):
     how_many = config[0]
     # We want to make sure there are always this many machines available
     to_reserve = 0
+
+    # change the status during the locking process
+    report.try_push_job_info(ctx.config, dict(status='waiting'))
 
     while True:
         # get a candidate list of machines
@@ -132,8 +137,13 @@ def lock_machines(ctx, config):
                 ctx.config['targets'] = newscandict
             else:
                 ctx.config['targets'] = newly_locked
-            # FIXME: Ugh.
-            log.info('\n  '.join(['Locked targets:', ] + yaml.safe_dump(ctx.config['targets'], default_flow_style=False).splitlines()))
+            locked_targets = yaml.safe_dump(
+                ctx.config['targets'],
+                default_flow_style=False
+            ).splitlines()
+            log.info('\n  '.join(['Locked targets:', ] + locked_targets))
+            # successfully locked machines, change status back to running
+            report.try_push_job_info(ctx.config, dict(status='running'))
             break
         elif not ctx.block:
             assert 0, 'not enough machines are available'
@@ -147,7 +157,8 @@ def lock_machines(ctx, config):
            ctx.summary.get('success', False):
             log.info('Unlocking machines...')
             for machine in ctx.config['targets'].iterkeys():
-                lock.unlock_one(ctx, machine, ctx.owner)
+                lock.unlock_one(ctx, machine, ctx.owner, ctx.archive)
+
 
 def save_config(ctx, config):
     """
@@ -180,6 +191,47 @@ def check_lock(ctx, config):
             user=status['locked_by'],
             owner=ctx.owner,
             )
+
+
+def check_packages(ctx, config):
+    """
+    Checks gitbuilder to determine if there are missing packages for this job.
+
+    If there are missing packages, fail the job.
+    """
+    log.info("Checking packages...")
+    os_type = ctx.config.get("os_type", None)
+    sha1 = ctx.config.get("sha1", None)
+    # We can only do this check if there are a defined sha1 and os_type
+    # in the job config.
+    if os_type and sha1:
+        log.info(
+            "Checking packages for os_type '{os}' and ceph hash '{ver}'".format(
+                os=os_type,
+                ver=sha1,
+            )
+        )
+        if not has_packages_for_distro(sha1, os_type):
+            msg = "Packages for os_type '{os}' and ceph hash '{ver}' not found"
+            msg = msg.format(
+                os=os_type,
+                ver=sha1,
+            )
+            log.error(msg)
+            # set the failure message and update paddles with the status
+            ctx.summary["failure_reason"] = msg
+            set_status(ctx.summary, "dead")
+            report.try_push_job_info(ctx.config, dict(status='dead'))
+            raise RuntimeError(msg)
+    else:
+        log.info(
+            "Checking packages skipped, missing os_type '{os}' or ceph hash '{ver}'".format(
+                os=os_type,
+                ver=sha1,
+            )
+        )
+
+
 
 @contextlib.contextmanager
 def timer(ctx, config):
@@ -303,6 +355,46 @@ def check_conflict(ctx, config):
     if failed:
         raise RuntimeError('Stale jobs detected, aborting.')
 
+
+def fetch_binaries_for_coredumps(path, remote):
+    """
+    Pul ELFs (debug and stripped) for each coredump found
+    """
+    # Check for Coredumps:
+    coredump_path = os.path.join(path, 'coredump')
+    if os.path.isdir(coredump_path):
+        log.info('Transferring binaries for coredumps...')
+        for dump in os.listdir(coredump_path):
+            # Pull program from core file
+            dump_path = os.path.join(coredump_path, dump)
+            dump_info = subprocess.Popen(['file', dump_path],
+                                         stdout=subprocess.PIPE)
+            dump_out = dump_info.communicate()
+
+            # Parse file output to get program, Example output:
+            # 1422917770.7450.core: ELF 64-bit LSB core file x86-64, version 1 (SYSV), SVR4-style, \
+            # from 'radosgw --rgw-socket-path /home/ubuntu/cephtest/apache/tmp.client.0/fastcgi_soc'
+            dump_program = dump_out.split("from '")[1].split(' ')[0]
+
+            # Find path on remote server:
+            r = remote.run(args=['which', dump_program], stdout=StringIO())
+            remote_path = r.stdout.getvalue()
+
+            # Pull remote program into coredump folder:
+            remote._sftp_get_file(remote_path, os.path.join(coredump_path,
+                                                            dump_program))
+
+            # Pull Debug symbols:
+            debug_path = os.path.join('/usr/lib/debug', remote_path)
+
+            # RPM distro's append their non-stripped ELF's with .debug
+            # When deb based distro's do not.
+            if remote.system_type == 'rpm':
+                debug_path = '{debug_path}.debug'.format(debug_path=debug_path)
+
+            remote.get_file(debug_path, coredump_path)
+
+
 @contextlib.contextmanager
 def archive(ctx, config):
     """
@@ -335,6 +427,8 @@ def archive(ctx, config):
             for rem in ctx.cluster.remotes.iterkeys():
                 path = os.path.join(logdir, rem.shortname)
                 misc.pull_directory(rem, archive_dir, path)
+                # Check for coredumps and pull binaries
+                fetch_binaries_for_coredumps(path, rem)
 
         log.info('Removing archive directory...')
         run.wait(
@@ -590,7 +684,17 @@ def vm_setup(ctx, config):
                         check_status=False,)
                 if r.returncode != 0:
                     p1 = subprocess.Popen(['cat', editinfo], stdout=subprocess.PIPE)
-                    p2 = subprocess.Popen(['ssh', '-t', '-t', str(rem), 'sudo', 'sh'], stdin=p1.stdout, stdout=subprocess.PIPE)
+                    p2 = subprocess.Popen(
+                        [
+                            'ssh',
+                            '-o', 'StrictHostKeyChecking=no',
+                            '-t', '-t',
+                            str(rem),
+                            'sudo',
+                            'sh'
+                        ],
+                        stdin=p1.stdout, stdout=subprocess.PIPE
+                    )
                     _, err = p2.communicate()
                     if err:
                         log.info("Edit of /etc/sudoers failed: %s", err)
@@ -601,7 +705,9 @@ def _handle_vm_init(remote_):
     Initialize a remote vm by downloading and running ceph_qa_chef.
     """
     log.info('Running ceph_qa_chef on %s', remote_)
-    remote_.run(args=['wget', '-q', '-O-',
+    remote_.run(
+        args=[
+            'wget', '-q', '-O-',
             'http://ceph.com/git/?p=ceph-qa-chef.git;a=blob_plain;f=solo/solo-from-scratch;hb=HEAD',
             run.Raw('|'),
             'sh',

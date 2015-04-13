@@ -68,6 +68,8 @@ def run_tasks(tasks, ctx):
             }
             if 'teuthology_branch' in config:
                 tags['teuthology_branch'] = config['teuthology_branch']
+            if 'branch' in config:
+                tags['branch'] = config['branch']
 
             # Remove ssh keys from reported config
             if 'targets' in config:
@@ -77,10 +79,11 @@ def run_tasks(tasks, ctx):
 
             job_id = ctx.config.get('job_id')
             archive_path = ctx.config.get('archive_path')
-            extra = {
-                'config': config,
-                'logs': get_http_log_path(archive_path, job_id),
-            }
+            extra = dict(config=config,
+                         )
+            if job_id:
+                extra['logs'] = get_http_log_path(archive_path, job_id)
+
             exc_id = sentry.get_ident(sentry.captureException(
                 tags=tags,
                 extra=extra,
@@ -91,8 +94,9 @@ def run_tasks(tasks, ctx):
             ctx.summary['sentry_event'] = event_url
 
         if ctx.config.get('interactive-on-error'):
+            ctx.config['interactive-on-error'] = False
             from .task import interactive
-            log.warning('Saw failure, going into interactive mode...')
+            log.warning('Saw failure during task execution, going into interactive mode...')
             interactive.task(ctx=ctx, config=None)
         # Throughout teuthology, (x,) = y has been used to assign values
         # from yaml files where only one entry of type y is correct.  This
@@ -125,7 +129,7 @@ def run_tasks(tasks, ctx):
                     if ctx.config.get('interactive-on-error'):
                         from .task import interactive
                         log.warning(
-                            'Saw failure, going into interactive mode...')
+                            'Saw failure during task cleanup, going into interactive mode...')
                         interactive.task(ctx=ctx, config=None)
                 else:
                     if suppress:

@@ -29,6 +29,8 @@ rpm_packages = {'ceph': [
     #'rest-bench',
     #'libcephfs_jni1',
     'libcephfs1',
+    'librados2',
+    'librbd1',
     'python-ceph',
     'rbd-fuse',
     'python-radosgw-agent',
@@ -201,8 +203,7 @@ def _get_baseurl(ctx, remote, config):
     # get distro name and arch
     baseparms = _get_baseurlinfo_and_dist(ctx, remote, config)
     base_url = 'http://{host}/{proj}-{pkg_type}-{dist}-{arch}-{flavor}/{uri}'.format(
-        host=ctx.teuthology_config.get('gitbuilder_host',
-                                       'gitbuilder.ceph.com'),
+        host=teuth_config.gitbuilder_host,
         proj=config.get('project', 'ceph'),
         pkg_type=remote.system_type,
         **baseparms
@@ -242,6 +243,16 @@ def _block_looking_for_package_version(remote, base_url, wait=False):
             raise VersionNotFoundError(base_url)
         break
     version = r.stdout.getvalue().strip()
+    # FIXME: 'version' as retreived from the repo is actually the RPM version
+    # PLUS *part* of the release. Example:
+    # Right now, ceph master is given the following version in the repo file:
+    # v0.67-rc3.164.gd5aa3a9 - whereas in reality the RPM version is 0.61.7
+    # and the release is 37.g1243c97.el6 (for centos6).
+    # Point being, I have to mangle a little here.
+    if version[0] == 'v':
+        version = version[1:]
+    if '-' in version:
+        version = version.split('-')[0]
     return version
 
 def _get_local_dir(config, remote):
@@ -327,15 +338,14 @@ def _update_deb_package_list_and_install(ctx, remote, debs, config):
         ],
         stdout=StringIO(),
     )
+    remote.run(args=['sudo', 'apt-get', 'update'], check_status=False)
     remote.run(
         args=[
-            'sudo', 'apt-get', 'update', run.Raw('&&'),
             'sudo', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', '-y', '--force-yes',
             '-o', run.Raw('Dpkg::Options::="--force-confdef"'), '-o', run.Raw(
                 'Dpkg::Options::="--force-confold"'),
             'install',
         ] + ['%s=%s' % (d, version) for d in debs],
-        stdout=StringIO(),
     )
     ldir = _get_local_dir(config, remote)
     if ldir:
@@ -353,19 +363,59 @@ def _yum_fix_repo_priority(remote, project, uri):
     :param remote: the teuthology.orchestra.remote.Remote object
     :param project: the project whose repos need modification
     """
+    repo_path = '/etc/yum.repos.d/%s.repo' % project
     remote.run(
         args=[
-            'sudo',
-            'sed',
-            '-i',
+            'if', 'test', '-f', repo_path, run.Raw(';'), 'then',
+            'sudo', 'sed', '-i', '-e',
+            run.Raw('\':a;N;$!ba;s/enabled=1\\ngpg/enabled=1\\npriority=1\\ngpg/g\''),
             '-e',
-            run.Raw(
-                '\':a;N;$!ba;s/enabled=1\\ngpg/enabled=1\\npriority=1\\ngpg/g\''),
-            '-e',
-            run.Raw("'s;ref/[a-zA-Z0-9_]*/;{uri}/;g'".format(uri=uri)),
-            '/etc/yum.repos.d/%s.repo' % project,
+            run.Raw("'s;ref/[a-zA-Z0-9_-]*/;{uri}/;g'".format(uri=uri)),
+            repo_path, run.Raw(';'), 'fi'
         ]
     )
+
+
+def _yum_fix_repo_host(remote, project):
+    """
+    Update the hostname to reflect the gitbuilder_host setting.
+    """
+    old_host = teuth_config._defaults['gitbuilder_host']
+    new_host = teuth_config.gitbuilder_host
+    if new_host == old_host:
+        return
+    repo_path = '/etc/yum.repos.d/%s.repo' % project
+    host_sed_expr = "'s/{0}/{1}/'".format(old_host, new_host)
+    remote.run(
+        args=[
+            'if', 'test', '-f', repo_path, run.Raw(';'), 'then',
+            'sudo', 'sed', '-i', '-e', run.Raw(host_sed_expr),
+            repo_path, run.Raw(';'), 'fi']
+    )
+
+
+def _yum_set_check_obsoletes(remote):
+    """
+    Set check_obsoletes = 1 in /etc/yum/pluginconf.d/priorities.conf
+
+    Creates a backup at /etc/yum/pluginconf.d/priorities.conf.orig so we can
+    restore later.
+    """
+    conf_path = '/etc/yum/pluginconf.d/priorities.conf'
+    conf_path_orig = conf_path + '.orig'
+    remote.run(args=['sudo', 'cp', '-af', conf_path, conf_path_orig])
+    remote.run(args=['echo', 'check_obsoletes = 1', run.Raw('|'),
+                     'sudo', 'tee', '-a', conf_path])
+
+
+def _yum_unset_check_obsoletes(remote):
+    """
+    Restore the /etc/yum/pluginconf.d/priorities.conf backup
+    """
+    conf_path = '/etc/yum/pluginconf.d/priorities.conf'
+    conf_path_orig = conf_path + '.orig'
+    remote.run(args=['sudo', 'mv', '-f', conf_path_orig, conf_path],
+               check_status=False)
 
 
 def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
@@ -383,30 +433,63 @@ def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
     baseparms = _get_baseurlinfo_and_dist(ctx, remote, config)
     log.info("Installing packages: {pkglist} on remote rpm {arch}".format(
         pkglist=", ".join(rpm), arch=baseparms['arch']))
-    host = ctx.teuthology_config.get('gitbuilder_host',
-                                     'gitbuilder.ceph.com')
+    host = teuth_config.gitbuilder_host
     dist_release = baseparms['dist_release']
-    start_of_url = 'http://{host}/ceph-rpm-{distro_release}-{arch}-{flavor}/{uri}'.format(
-        host=host, **baseparms)
-    ceph_release = 'ceph-release-{release}.{dist_release}.noarch'.format(
-        release=RELEASE, dist_release=dist_release)
-    rpm_name = "{rpm_nm}.rpm".format(rpm_nm=ceph_release)
+    project = config.get('project', 'ceph')
+    start_of_url = 'http://{host}/{proj}-rpm-{distro_release}-{arch}-{flavor}/{uri}'.format(
+        proj=project, host=host, **baseparms)
+    proj_release = '{proj}-release-{release}.{dist_release}.noarch'.format(
+        proj=project, release=RELEASE, dist_release=dist_release)
+    rpm_name = "{rpm_nm}.rpm".format(rpm_nm=proj_release)
     base_url = "{start_of_url}/noarch/{rpm_name}".format(
         start_of_url=start_of_url, rpm_name=rpm_name)
-    err_mess = StringIO()
-    try:
-        # When this was one command with a pipe, it would sometimes
-        # fail with the message 'rpm: no packages given for install'
-        remote.run(args=['wget', base_url, ],)
-        remote.run(args=['sudo', 'rpm', '-i', rpm_name, ], stderr=err_mess, )
-    except Exception:
-        cmp_msg = 'package {pkg} is already installed'.format(
-            pkg=ceph_release)
-        if cmp_msg != err_mess.getvalue().strip():
-            raise
+    # When this was one command with a pipe, it would sometimes
+    # fail with the message 'rpm: no packages given for install'
+    remote.run(args=['wget', base_url, ],)
+    remote.run(args=['sudo', 'yum', '-y', 'localinstall', rpm_name])
 
 
 
+
+
+def verify_package_version(ctx, config, remote):
+    """
+    Ensures that the version of package installed is what
+    was asked for in the config.
+
+    For most cases this is for ceph, but we also install samba
+    for example.
+    """
+    # Do not verify the version if the ceph-deploy task is being used to
+    # install ceph. Verifying the ceph installed by ceph-deploy should work,
+    # but the qa suites will need reorganized first to run ceph-deploy
+    # before the install task.
+    # see: http://tracker.ceph.com/issues/11248
+    if config.get("extras"):
+        log.info("Skipping version verification...")
+        return True
+    base_url = _get_baseurl(ctx, remote, config)
+    version = _block_looking_for_package_version(
+        remote,
+        base_url,
+        config.get('wait_for_package', False)
+    )
+    pkg_to_check = config.get('project', 'ceph')
+    installed_ver = packaging.get_package_version(remote, pkg_to_check)
+    if installed_ver and version in installed_ver:
+        msg = "The correct {pkg} version {ver} is installed.".format(
+            ver=version,
+            pkg=pkg_to_check
+        )
+        log.info(msg)
+    else:
+        raise RuntimeError(
+            "{pkg} version {ver} was not installed, found {installed}.".format(
+                ver=version,
+                installed=installed_ver,
+                pkg=pkg_to_check
+            )
+        )
 
 
 def purge_data(ctx):
@@ -513,7 +596,6 @@ def _remove_sources_list_rpm(remote, proj):
             run.Raw('||'),
             'true',
         ],
-        stdout=StringIO(),
     )
 
 
@@ -705,6 +787,7 @@ def _downloadISOAddRepo(remote,baseurl,reponame,iso_name=None, is_internal=False
                '--non-interactive', 'refresh'],
         stdout=StringIO(),
     )
+    _yum_unset_check_obsoletes(remote)
 
 
 
@@ -751,6 +834,9 @@ def install_packages(ctx, pkgs, config):
     :param config: the config dict
     """
     with parallel() as p:
+        project = config.get('project', 'ceph')
+        log.info("Removing {proj} sources lists".format(
+            proj=project))
         for remote in ctx.cluster.remotes.iterkeys():
             p.spawn(
                 _update_rpm_package_list_and_install,
@@ -777,13 +863,21 @@ def install(ctx, config):
     log.info('extra packages: {packages}'.format(packages=extra_pkgs))
     rpm += extra_pkgs
 
-    # the extras option right now is specific to the 'ceph' project
+    # When extras is in the config we want to purposely not install ceph.
+    # This is typically used on jobs that use ceph-deploy to install ceph
+    # or when we are testing ceph-deploy directly.  The packages being
+    # installed are needed to properly test ceph as ceph-deploy won't
+    # install these. 'extras' might not be the best name for this.
     extras = config.get('extras')
     if extras is not None:
         rpm = ['ceph-fuse', 'librbd1', 'librados2', 'ceph-test', 'python-ceph']
 
     # install lib deps (so we explicitly specify version), but do not
     # uninstall them, as other packages depend on them (e.g., kvm)
+    # TODO: these can probably be removed as these packages are now included
+    # in PACKAGES. We've found that not uninstalling them each run can
+    # sometimes cause a baremetal machine to end up in a weird state so
+    # they were included in PACKAGES to ensure that nuke cleans them up.
     proj_install_debs = {'ceph': [
         'librados2',
         'librados2-dbg',
@@ -799,6 +893,9 @@ def install(ctx, config):
     install_debs = proj_install_debs.get(project, [])
     install_rpm = proj_install_rpm.get(project, [])
 
+    # TODO: see previous todo comment. The install_debs and install_rpm
+    # part can and should be removed eventually as those packages are now
+    # present in PACKAGES.
     install_info = {
         "rpm": rpm + install_rpm}
     remove_info = {
@@ -845,17 +942,13 @@ def upgrade_with_ceph_deploy(ctx, node, remote, pkgs, sys_type):
     subprocess.call(['ceph-deploy', 'install'] + params)
     remote.run(args=['sudo', 'restart', 'ceph-all'])
 
+
 def upgrade_common(ctx, config, deploy_style):
     """
     Common code for upgrading
     """
-
     assert config is None or isinstance(config, dict), \
         "install.upgrade only supports a dictionary for configuration"
-
-    for i in config.keys():
-            assert config.get(i) is None or isinstance(
-                config.get(i), dict), 'host supports dictionary'
 
     project = config.get('project', 'ceph')
 
@@ -863,7 +956,8 @@ def upgrade_common(ctx, config, deploy_style):
     # unspecified/implicit.
     install_overrides = ctx.config.get(
         'overrides', {}).get('install', {}).get(project, {})
-    log.info('project %s config %s overrides %s', project, config, install_overrides)
+    log.info('project %s config %s overrides %s', project, config,
+             install_overrides)
 
     # FIXME: extra_pkgs is not distro-agnostic
     extra_pkgs = config.get('extra_packages', [])
@@ -876,7 +970,11 @@ def upgrade_common(ctx, config, deploy_style):
             remotes[remote] = config.get('all')
     else:
         for role in config.keys():
-            (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+            remotes_dict = ctx.cluster.only(role).remotes
+            if not remotes_dict:
+                # This is a regular config argument, not a role
+                continue
+            remote = remotes_dict.keys()[0]
             if remote in remotes:
                 log.warn('remote %s came up twice (role %s)', remote, role)
                 continue
@@ -898,6 +996,8 @@ def upgrade_common(ctx, config, deploy_style):
         system_type = teuthology.get_system_type(remote)
         assert system_type in ('deb', 'rpm')
         pkgs = PACKAGES[project][system_type]
+        excluded_packages = config.get('exclude_packages', list())
+        pkgs = list(set(pkgs).difference(set(excluded_packages)))
         log.info("Upgrading {proj} {system_type} packages: {pkgs}".format(
             proj=project, system_type=system_type, pkgs=', '.join(pkgs)))
             # FIXME: again, make extra_pkgs distro-agnostic
@@ -905,6 +1005,7 @@ def upgrade_common(ctx, config, deploy_style):
         node['project'] = project
         
         deploy_style(ctx, node, remote, pkgs, system_type)
+        verify_package_version(ctx, node, remote)
 
 
 docstring_for_upgrade = """"
@@ -938,6 +1039,12 @@ docstring_for_upgrade = """"
 
     (HACK: the overrides will *only* apply the sha1/branch/tag if those
     keys are not present in the config.)
+
+    It is also possible to attempt to exclude packages from the upgrade set:
+
+        tasks:
+        - install.{cmd_parameter}:
+            exclude_packages: ['ceph-test', 'ceph-test-dbg']
 
     :param ctx: the argparse.Namespace object
     :param config: the config dict

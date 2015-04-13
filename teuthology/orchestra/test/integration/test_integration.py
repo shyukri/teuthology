@@ -1,11 +1,11 @@
-from .. import monkey
+from teuthology.orchestra import monkey
 monkey.patch_all()
 
 from cStringIO import StringIO
 
 import os
-from .. import connection, remote, run
-from .util import assert_raises
+from teuthology.orchestra import connection, remote, run
+from teuthology.orchestra.test.util import assert_raises
 from teuthology.exceptions import CommandCrashedError, ConnectionLostError
 
 from pytest import skip
@@ -41,10 +41,12 @@ class TestIntegration():
             run.run,
             client=ssh,
             args=['sh', '-c', 'kill -ABRT $PPID'],
+            name=HOST,
             )
         assert e.command == "sh -c 'kill -ABRT $PPID'"
         assert str(e) == \
-            "SSH connection was lost: \"sh -c 'kill -ABRT $PPID'\""
+            "SSH connection to {host} was lost: ".format(host=HOST) + \
+            "\"sh -c 'kill -ABRT $PPID'\""
 
     def test_pipe(self):
         ssh = connection.connect(HOST)

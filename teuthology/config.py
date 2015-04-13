@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+import collections
 
 
 def init_logging():
@@ -10,7 +11,7 @@ def init_logging():
 log = init_logging()
 
 
-class YamlConfig(object):
+class YamlConfig(collections.MutableMapping):
     """
     A configuration object populated by parsing a yaml file, with optional
     default values.
@@ -82,11 +83,17 @@ class YamlConfig(object):
     def __str__(self):
         return yaml.safe_dump(self._conf, default_flow_style=False).strip()
 
+    def __repr__(self):
+        return self.__str__()
+
     def __getitem__(self, name):
-        return self._conf.__getitem__(name)
+        return self.__getattr__(name)
 
     def __getattr__(self, name):
         return self._conf.get(name, self._defaults.get(name))
+
+    def __contains__(self, name):
+        return self._conf.__contains__(name)
 
     def __setattr__(self, name, value):
         if name.endswith('_conf') or name in ('yaml_path'):
@@ -96,6 +103,18 @@ class YamlConfig(object):
 
     def __delattr__(self, name):
         del self._conf[name]
+
+    def __len__(self):
+        return self._conf.__len__()
+
+    def __iter__(self):
+        return self._conf.__iter__()
+
+    def __setitem__(self, name, value):
+        self._conf.__setitem__(name, value)
+
+    def __delitem__(self, name):
+        self._conf.__delitem__(name)
 
 
 class TeuthologyConfig(YamlConfig):
@@ -113,9 +132,13 @@ class TeuthologyConfig(YamlConfig):
         'lock_server': 'http://paddles.front.sepia.ceph.com/',
         'max_job_time': 259200,  # 3 days
         'results_server': 'http://paddles.front.sepia.ceph.com/',
+        'results_sending_email': 'teuthology',
+        'results_timeout': 43200,
         'src_base_path': os.path.expanduser('~/src'),
         'verify_host_keys': True,
         'watchdog_interval': 120,
+        'kojihub_url': 'http://koji.fedoraproject.org/kojihub',
+        'kojiroot_url': 'http://kojipkgs.fedoraproject.org/packages',
     }
 
     def __init__(self):

@@ -3,6 +3,7 @@ import sys
 import logging
 import time
 import itertools
+from .config import config
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,12 @@ def nested(*managers):
     except Exception:
         log.exception('Saw exception from nested tasks')
         exc = sys.exc_info()
+        # FIXME this needs to be more generic
+        if config.ctx and config.ctx.config.get('interactive-on-error'):
+            config.ctx.config['interactive-on-error'] = False
+            from .task import interactive
+            log.warning('Saw failure, going into interactive mode...')
+            interactive.task(ctx=config.ctx, config=None)
     finally:
         while exits:
             exit = exits.pop()
@@ -108,7 +115,7 @@ class safe_while(object):
         msg = 'reached maximum tries ({tries})' + \
             ' after waiting for {total} seconds'
         if self.action:
-            msg = "'{action}'" + msg
+            msg = "'{action}' " + msg
 
         msg = msg.format(
             action=self.action,

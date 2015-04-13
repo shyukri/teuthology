@@ -1,4 +1,6 @@
 import argparse
+
+from mock import patch
 from ..orchestra import cluster
 from .. import misc
 from ..config import config
@@ -16,8 +18,8 @@ def test_get_clients_simple():
     ctx.cluster = cluster.Cluster(
         remotes=[
             (remote, ['client.0', 'client.1'])
-            ],
-        )
+        ],
+    )
     g = misc.get_clients(ctx=ctx, roles=['client.1'])
     got = next(g)
     assert len(got) == 2

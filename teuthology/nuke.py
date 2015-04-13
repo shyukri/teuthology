@@ -10,12 +10,14 @@ import teuthology
 from . import orchestra
 import orchestra.remote
 from .orchestra import run
+from .config import FakeNamespace
 from .lock import list_locks
 from .lock import unlock_one
+from .lock import find_stale_locks
 from .misc import config_file
+from .misc import merge_configs
 from .misc import get_testdir
 from .misc import get_user
-from .misc import read_config
 from .misc import reconnect
 from .parallel import parallel
 from .task import install as install_task
@@ -27,12 +29,14 @@ log = logging.getLogger(__name__)
 
 def clear_firewall(ctx):
     """
-    Remove any iptables rules created by teuthology.  These rules are identified by containing
-    a comment with 'teuthology' in it.  Non-teuthology firewall rules are unaffected.
+    Remove any iptables rules created by teuthology.  These rules are
+    identified by containing a comment with 'teuthology' in it.  Non-teuthology
+    firewall rules are unaffected.
     """
     ctx.cluster.run(
         args=[
-            "sudo", "sh", "-c", "iptables-save | grep -v teuthology | iptables-restore"
+            "sudo", "sh", "-c",
+            "iptables-save | grep -v teuthology | iptables-restore"
         ],
         wait=False,
     )
@@ -51,6 +55,14 @@ def shutdown_daemons(ctx):
                 'xargs', '-n', '1', 'sudo', 'fusermount', '-u', run.Raw(';'),
                 'fi',
                 run.Raw(';'),
+                'if', 'grep', '-q', 'rbd-fuse', '/etc/mtab', run.Raw(';'),
+                'then',
+                'grep', 'rbd-fuse', '/etc/mtab', run.Raw('|'),
+                'grep', '-o', " /.* fuse", run.Raw('|'),
+                'grep', '-o', "/.* ", run.Raw('|'),
+                'xargs', '-n', '1', 'sudo', 'fusermount', '-u', run.Raw(';'),
+                'fi',
+                run.Raw(';'),
                 'sudo',
                 'killall',
                 '--quiet',
@@ -62,6 +74,7 @@ def shutdown_daemons(ctx):
                 'radosgw',
                 'ceph_test_rados',
                 'rados',
+                'rbd-fuse',
                 'apache2',
                 run.Raw('||'),
                 'true',  # ignore errors from ceph binaries not being found
@@ -89,6 +102,7 @@ def kill_hadoop(ctx):
                 pid, cmdline = line.split(None, 1)
                 log.info("Killing PID {0} ({1})".format(pid, cmdline))
                 remote.run(args=["kill", "-9", pid], check_status=False)
+
 
 def find_kernel_mounts(ctx):
     nodes = {}
@@ -231,8 +245,9 @@ def dpkg_configure(ctx):
         proc = remote.run(
             args=[
                 'sudo', 'dpkg', '--configure', '-a',
-                run.Raw('&&'),
-                'sudo', 'apt-get', '-f', 'install',
+                run.Raw(';'),
+                'sudo', 'DEBIAN_FRONTEND=noninteractive',
+                'apt-get', '-y', '--force-yes', '-f', 'install',
                 run.Raw('||'),
                 ':',
             ],
@@ -248,15 +263,16 @@ def dpkg_configure(ctx):
 
 
 def remove_installed_packages(ctx):
-
     dpkg_configure(ctx)
-    config = {'project': 'ceph'}
+    conf = {'project': 'ceph'}
     install_task.remove_packages(
         ctx,
-        config,
-        {"deb": install_task.deb_packages['ceph'] + ['salt-common', 'salt-minion'],
-         "rpm": install_task.rpm_packages['ceph']})
-    install_task.remove_sources(ctx, config)
+        conf,
+        {"deb": install_task.PACKAGES['ceph']['deb'] +
+         ['salt-common', 'salt-minion', 'calamari-server'],
+         "rpm": install_task.PACKAGES['ceph']['rpm'] +
+         ['salt-common', 'salt-minion', 'calamari-server']})
+    install_task.remove_sources(ctx, conf)
     install_task.purge_data(ctx)
 
 
@@ -283,6 +299,32 @@ def remove_testing_tree(ctx):
         proc.wait()
 
 
+def remove_configuration_files(ctx):
+    """
+    Goes through a list of commonly used configuration files used for testing
+    that should not be left behind.
+
+    For example, sometimes ceph-deploy may be configured via
+    ``~/.cephdeploy.conf`` to alter how it handles installation by specifying
+    a default section in its config with custom locations.
+    """
+
+    nodes = {}
+
+    for remote in ctx.cluster.remotes.iterkeys():
+        proc = remote.run(
+            args=[
+                'rm', '-f', '/home/ubuntu/.cephdeploy.conf'
+            ],
+            wait=False,
+        )
+        nodes[remote.name] = proc
+
+    for name, proc in nodes.iteritems():
+        log.info('removing temporary configuration files on %s', name)
+        proc.wait()
+
+
 def synch_clocks(remotes):
     nodes = {}
     for remote in remotes:
@@ -306,7 +348,8 @@ def synch_clocks(remotes):
         proc.wait()
 
 
-def main(ctx):
+def main(args):
+    ctx = FakeNamespace(args)
     if ctx.verbose:
         teuthology.log.setLevel(logging.DEBUG)
 
@@ -326,7 +369,15 @@ def main(ctx):
             if not ctx.owner:
                 ctx.owner = open(ctx.archive + '/owner').read().rstrip('\n')
 
-    read_config(ctx)
+    if ctx.targets:
+        ctx.config = merge_configs(ctx.targets)
+
+    if ctx.stale:
+        stale_nodes = find_stale_locks(ctx.owner)
+        targets = dict()
+        for node in stale_nodes:
+            targets[node['name']] = node['ssh_pub_key']
+        ctx.config = dict(targets=targets)
 
     log.info(
         '\n  '.join(
@@ -423,7 +474,8 @@ def nuke_helper(ctx, should_unlock):
         return
     log.debug('shortname: %s' % shortname)
     log.debug('{ctx}'.format(ctx=ctx))
-    if not ctx.noipmi and 'ipmi_user' in ctx.teuthology_config and 'vpm' not in shortname:
+    if (not ctx.noipmi and 'ipmi_user' in ctx.teuthology_config and
+            'vpm' not in shortname):
         console = orchestra.remote.getRemoteConsole(
             name=host,
             ipmiuser=ctx.teuthology_config['ipmi_user'],
@@ -485,6 +537,7 @@ def nuke_helper(ctx, should_unlock):
     ctx.cluster.run(args=['sudo', 'rm', '-f',
                           '/lib/firmware/updates/.git/index.lock', ])
 
+    remove_configuration_files(ctx)
     log.info('Reseting syslog output locations...')
     reset_syslog_dir(ctx)
     log.info('Clearing filesystem of test data...')

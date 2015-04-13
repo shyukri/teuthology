@@ -29,9 +29,10 @@ class RemoteProcess(object):
         'greenlets',
         # for orchestra.remote.Remote to place a backreference
         'remote',
+        'label',
         ]
 
-    def __init__(self, client, args, check_status=True, hostname=None):
+    def __init__(self, client, args, check_status=True, hostname=None, label=None):
         """
         Create the object. Does not initiate command execution.
 
@@ -41,7 +42,9 @@ class RemoteProcess(object):
         :param check_status: Whether to raise CommandFailedError on non-zero
                              exit status, and . Defaults to True. All signals
                              and connection loss are made to look like SIGHUP.
-        :param hostname: Name of remote host (optional)
+        :param hostname:     Name of remote host (optional)
+        :param label:        Can be used to label or describe what the
+                             command is doing.
         """
         self.client = client
         self.args = args
@@ -51,6 +54,7 @@ class RemoteProcess(object):
             self.command = quote(args)
 
         self.check_status = check_status
+        self.label = label
 
         if hostname:
             self.hostname = hostname
@@ -65,8 +69,11 @@ class RemoteProcess(object):
         """
         Execute remote command
         """
-        log.getChild(self.hostname).info(u"Running: {cmd!r}".format(
-            cmd=self.command))
+        prefix = "Running:"
+        if self.label:
+            prefix = "Running ({label}):".format(label=self.label)
+        log.getChild(self.hostname).info(u"{prefix} {cmd!r}".format(
+            cmd=self.command, prefix=prefix))
 
         (self._stdin_buf, self._stdout_buf, self._stderr_buf) = \
             self.client.exec_command(self.command)
@@ -94,14 +101,16 @@ class RemoteProcess(object):
                 transport = self.client.get_transport()
                 if not transport.is_active():
                     # look like we lost the connection
-                    raise ConnectionLostError(command=self.command)
+                    raise ConnectionLostError(command=self.command,
+                                              node=self.hostname)
 
                 # connection seems healthy still, assuming it was a
                 # signal; sadly SSH does not tell us which signal
                 raise CommandCrashedError(command=self.command)
             if status != 0:
                 raise CommandFailedError(command=self.command,
-                                         exitstatus=status, node=self.hostname)
+                                         exitstatus=status, node=self.hostname,
+                                         label=self.label)
         return status
 
     def _get_exitstatus(self):
@@ -282,10 +291,14 @@ def run(
     logger=None,
     check_status=True,
     wait=True,
-    name=None
+    name=None,
+    label=None
 ):
     """
-    Run a command remotely.
+    Run a command remotely.  If any of 'args' contains shell metacharacters
+    that you want to pass unquoted, pass it as an instance of Raw(); otherwise
+    it will be quoted with pipes.quote() (single quote, and single quotes
+    enclosed in double quotes).
 
     :param client: SSHConnection to run the command with
     :param args: command to run
@@ -308,13 +321,14 @@ def run(
                  actual status is available via ``.get()``.
     :param name: Human readable name (probably hostname) of the destination
                  host
+    :param label: Can be used to label or describe what the command is doing.
     """
     (host, port) = client.get_transport().getpeername()
 
     if name is None:
         name = host
 
-    r = RemoteProcess(client, args, check_status=check_status, hostname=name)
+    r = RemoteProcess(client, args, check_status=check_status, hostname=name, label=label)
     r.execute()
 
     r.stdin = KludgeFile(wrapped=r.stdin)

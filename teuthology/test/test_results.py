@@ -73,6 +73,7 @@ class TestResultsEmail(object):
 
     def setup(self):
         config.results_ui_server = "http://example.com/"
+        config.archive_server = "http://qa-proxy.ceph.com/teuthology/"
         self.archive = FakeArchive()
         self.archive.setup()
         self.archive_base = self.archive.archive_base
@@ -86,8 +87,6 @@ class TestResultsEmail(object):
         self.archive.populate_archive(run_name, self.reference['jobs'])
         (subject, body) = results.build_email_body(
             run_name,
-            run_dir,
-            36000)
+            run_dir)
         assert subject == self.reference['subject']
-        print body
         assert body == self.reference['body']

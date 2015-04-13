@@ -11,6 +11,7 @@ import requests
 import pwd
 import subprocess
 import smtplib
+import socket
 import sys
 import yaml
 from email.mime.text import MIMEText
@@ -58,7 +59,8 @@ def main(args):
 
     job_config = create_initial_config(suite, suite_branch, ceph_branch,
                                        teuthology_branch, kernel_branch,
-                                       kernel_flavor, distro, machine_type)
+                                       kernel_flavor, distro, machine_type,
+                                       name)
 
     if suite_dir:
         suite_repo_path = suite_dir
@@ -106,7 +108,7 @@ def make_run_name(suite, ceph_branch, kernel_branch, kernel_flavor,
     worker = get_worker(machine_type)
     return '-'.join(
         [user, str(timestamp), suite, ceph_branch,
-         kernel_branch, kernel_flavor, worker]
+         kernel_branch or '-', kernel_flavor, worker]
     )
 
 
@@ -136,7 +138,8 @@ def fetch_repos(branch, test_name):
 
 
 def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
-                          kernel_branch, kernel_flavor, distro, machine_type):
+                          kernel_branch, kernel_flavor, distro, machine_type,
+                          name=None):
     """
     Put together the config file used as the basis for each job in the run.
     Grabs hashes for the latest ceph, kernel and teuthology versions in the
@@ -148,15 +151,15 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
     # Put together a stanza specifying the kernel hash
     if kernel_branch == 'distro':
         kernel_hash = 'distro'
-    # Skip the stanza if the branch passed is '-'
-    elif kernel_branch == '-':
+    # Skip the stanza if no -k given
+    elif kernel_branch is None:
         kernel_hash = None
     else:
         kernel_hash = get_hash('kernel', kernel_branch, kernel_flavor,
-                               machine_type)
+                               machine_type, distro)
         if not kernel_hash:
             schedule_fail(message="Kernel branch '{branch}' not found".format(
-                branch=kernel_branch))
+                branch=kernel_branch), name=name)
     if kernel_hash:
         log.info("kernel sha1: {hash}".format(hash=kernel_hash))
         kernel_dict = dict(kernel=dict(kdb=True, sha1=kernel_hash))
@@ -164,18 +167,19 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
         kernel_dict = dict()
 
     # Get the ceph hash
-    ceph_hash = get_hash('ceph', ceph_branch, kernel_flavor, machine_type)
+    ceph_hash = get_hash('ceph', ceph_branch, kernel_flavor, machine_type,
+                         distro)
     if not ceph_hash:
         exc = BranchNotFoundError(ceph_branch, 'ceph.git')
-        schedule_fail(message=str(exc))
+        schedule_fail(message=str(exc), name=name)
     log.info("ceph sha1: {hash}".format(hash=ceph_hash))
 
     # Get the ceph package version
     ceph_version = package_version_for_hash(ceph_hash, kernel_flavor,
                                             distro, machine_type)
     if not ceph_version:
-        schedule_fail("Packages for ceph version '{ver}' not found".format(
-            ver=ceph_version))
+        schedule_fail("Packages for ceph hash '{ver}' not found".format(
+            ver=ceph_hash), name)
     log.info("ceph version: {ver}".format(ver=ceph_version))
 
     # Decide what branch of s3-tests to use
@@ -190,7 +194,7 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
     if teuthology_branch:
         if not get_branch_info('teuthology', teuthology_branch):
             exc = BranchNotFoundError(teuthology_branch, 'teuthology.git')
-            raise schedule_fail(message=str(exc))
+            schedule_fail(message=str(exc), name=name)
     else:
         # Decide what branch of teuthology to use
         if get_branch_info('teuthology', ceph_branch):
@@ -201,7 +205,11 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
             teuthology_branch = 'master'
     log.info("teuthology branch: %s", teuthology_branch)
 
-    if not suite_branch:
+    if suite_branch:
+        if not get_branch_info('ceph-qa-suite', suite_branch):
+            exc = BranchNotFoundError(suite_branch, 'ceph-qa-suite.git')
+            schedule_fail(message=str(exc), name=name)
+    else:
         # Decide what branch of ceph-qa-suite to use
         if get_branch_info('ceph-qa-suite', ceph_branch):
             suite_branch = ceph_branch
@@ -272,7 +280,7 @@ def prepare_and_schedule(job_config, suite_repo_path, base_yaml_paths, limit,
         dry_run=dry_run,
         filter_in=filter_in,
         filter_out=filter_out,
-        )
+    )
 
     if job_config.email and num_jobs:
         arg = copy.deepcopy(base_args)
@@ -300,9 +308,12 @@ def schedule_fail(message, name=''):
         msg['Subject'] = subject
         msg['From'] = config.results_sending_email
         msg['To'] = email
-        smtp = smtplib.SMTP('localhost')
-        smtp.sendmail(msg['From'], [msg['To']], msg.as_string())
-        smtp.quit()
+        try:
+            smtp = smtplib.SMTP('localhost')
+            smtp.sendmail(msg['From'], [msg['To']], msg.as_string())
+            smtp.quit()
+        except socket.error:
+            log.exception("Failed to connect to mail server!")
     raise ScheduleFailError(message, name)
 
 
@@ -358,23 +369,33 @@ def get_distro_defaults(distro, machine_type):
     Given a distro (e.g. 'ubuntu') and machine type, return:
         (arch, release, pkg_type)
 
-    This is mainly used to default to:
+    This is used to default to:
         ('x86_64', 'precise', 'deb') when passed 'ubuntu' and 'plana'
-    And ('armv7l', 'saucy', 'deb') when passed 'ubuntu' and 'saya'
-    And ('x86_64', 'centos6', 'rpm') when passed anything non-ubuntu
+    ('armv7l', 'saucy', 'deb') when passed 'ubuntu' and 'saya'
+    ('x86_64', 'wheezy', 'deb') when passed 'debian'
+    ('x86_64', 'fedora20', 'rpm') when passed 'fedora'
+    ('x86_64', 'centos6', 'rpm') when passed 'centos'
+    And ('x86_64', 'rhel7_0', 'rpm') when passed anything else
     """
+    arch = 'x86_64'
     if distro == 'ubuntu':
+        pkg_type = 'deb'
         if machine_type == 'saya':
-            arch = 'armv7l'
             release = 'saucy'
-            pkg_type = 'deb'
+            arch = 'armv7l'
         else:
-            arch = 'x86_64'
             release = 'precise'
-            pkg_type = 'deb'
-    else:
-        arch = 'x86_64'
+    elif distro == 'debian':
+        release = 'wheezy'
+        pkg_type = 'deb'
+    elif distro == 'centos':
         release = 'centos6'
+        pkg_type = 'rpm'
+    elif distro == 'fedora':
+        release = 'fedora20'
+        pkg_type = 'rpm'
+    else:
+        release = 'rhel7_0'
         pkg_type = 'rpm'
     log.debug(
         "Defaults for machine_type %s: arch=%s, release=%s, pkg_type=%s)",
@@ -397,13 +418,13 @@ def get_gitbuilder_url(project, distro, pkg_type, arch, kernel_flavor):
     :param arch:          A string like 'x86_64'
     :param kernel_flavor: A string like 'basic'
     """
-    templ = 'http://gitbuilder.ceph.com/{proj}-{pkg}-{distro}-{arch}-{flav}/'
+    templ = 'http://{host}/{proj}-{pkg}-{distro}-{arch}-{flav}/'
     return templ.format(proj=project, pkg=pkg_type, distro=distro, arch=arch,
-                        flav=kernel_flavor)
+                        flav=kernel_flavor, host=config.gitbuilder_host)
 
 
 def package_version_for_hash(hash, kernel_flavor='basic',
-                             distro='ubuntu', machine_type='plana'):
+                             distro='rhel', machine_type='plana'):
     """
     Does what it says on the tin. Uses gitbuilder repos.
 
@@ -413,6 +434,7 @@ def package_version_for_hash(hash, kernel_flavor='basic',
     base_url = get_gitbuilder_url('ceph', release, pkg_type, arch,
                                   kernel_flavor)
     url = os.path.join(base_url, 'sha1', hash, 'version')
+    log.debug("Looking for packages at {url}".format(url=url))
     resp = requests.get(url)
     if resp.ok:
         return resp.text.strip()
@@ -453,19 +475,24 @@ def schedule_suite(job_config,
     """
     machine_type = job_config.machine_type
     suite_name = job_config.suite
-    count = 0
     log.debug('Suite %s in %s' % (suite_name, path))
     configs = [(combine_path(suite_name, item[0]), item[1]) for item in
                build_matrix(path)]
     log.info('Suite %s in %s generated %d jobs (not yet filtered)' % (
         suite_name, path, len(configs)))
 
+    # used as a local cache for package versions from gitbuilder
+    package_versions = dict()
+    jobs_to_schedule = []
+    jobs_missing_packages = []
     for description, fragment_paths in configs:
-        if limit > 0 and count >= limit:
+        if limit > 0 and len(jobs_to_schedule) >= limit:
             log.info(
                 'Stopped after {limit} jobs due to --limit={limit}'.format(
                     limit=limit))
             break
+        # Break apart the filter parameter (one string) into comma separated
+        # components to be used in searches.
         if filter_in:
             if not filter_in in description:
                 if all([x.find(filter_in) < 0 for x in fragment_paths]):
@@ -478,7 +505,7 @@ def schedule_suite(job_config,
         raw_yaml = '\n'.join([file(a, 'r').read() for a in fragment_paths])
 
         parsed_yaml = yaml.load(raw_yaml)
-        os_type = parsed_yaml.get('os_type')
+        os_type = parsed_yaml.get('os_type') or job_config.os_type
         exclude_arch = parsed_yaml.get('exclude_arch')
         exclude_os_type = parsed_yaml.get('exclude_os_type')
 
@@ -499,10 +526,6 @@ def schedule_suite(job_config,
                 description)
             continue
 
-        log.info(
-            'Scheduling %s', description
-        )
-
         arg = copy.deepcopy(base_args)
         arg.extend([
             '--description', description,
@@ -511,25 +534,142 @@ def schedule_suite(job_config,
         arg.extend(base_yamls)
         arg.extend(fragment_paths)
 
+        job = dict(
+            yaml=parsed_yaml,
+            desc=description,
+            args=arg
+        )
+
+        if dry_run:
+            sha1 = job_config.sha1
+            # Get package versions for this sha1 and os_type. If we've already
+            # retrieved them in a previous loop, they'll be present in
+            # package_versions and gitbuilder will not be asked again for them.
+            package_versions = get_package_versions(
+                sha1,
+                os_type,
+                package_versions
+            )
+
+            if not has_packages_for_distro(sha1, os_type, package_versions):
+                m = "Packages for os_type '{os}' and ceph hash '{ver}' not found"
+                log.info(m.format(os=os_type, ver=sha1))
+                jobs_missing_packages.append(job)
+
+        jobs_to_schedule.append(job)
+
+    for job in jobs_to_schedule:
+        log.info(
+            'Scheduling %s', job['desc']
+        )
+
         if dry_run:
             # Quote any individual args so that individual commands can be
             # copied and pasted in order to execute them individually.
             printable_args = []
-            for item in arg:
+            for item in job['args']:
                 if ' ' in item:
                     printable_args.append("'%s'" % item)
                 else:
                     printable_args.append(item)
-            log.info('dry-run: %s' % ' '.join(printable_args))
+            prefix = "dry-run:"
+            if job in jobs_missing_packages:
+                prefix = "dry-run (missing packages):"
+            log.info('%s %s' % (prefix, ' '.join(printable_args)))
         else:
             subprocess.check_call(
-                args=arg,
+                args=job['args'],
             )
-        count += 1
+
+    count = len(jobs_to_schedule)
+    missing_count = len(jobs_missing_packages)
     log.info('Suite %s in %s scheduled %d jobs.' % (suite_name, path, count))
     log.info('Suite %s in %s -- %d jobs were filtered out.' % (suite_name,
               path, len(configs) - count))
     return count
+
+
+def get_package_versions(sha1, os_type, package_versions=None):
+    """
+    Will retrieve the package versions for the given sha1 and os_type
+    from gitbuilder.
+
+    Optionally, a package_versions dict can be provided
+    from previous calls to this function to avoid calling gitbuilder for
+    information we've already retrieved.
+
+    The package_versions dict will be in the following format::
+
+        {
+            "sha1": {
+                "ubuntu": "version",
+                "rhel": "version",
+            },
+            "another-sha1": {
+                "ubuntu": "version",
+            }
+        }
+
+    :param sha1:             The sha1 hash of the ceph version.
+    :param os_type:          The distro we want to get packages for, given
+                             the ceph sha1. Ex. 'ubuntu', 'rhel', etc.
+    :param package_versions: Use this optionally to use cached results of
+                             previous calls to gitbuilder.
+    :returns:                A dict of package versions. Will return versions
+                             for all hashs and distros, not just for the given
+                             hash and distro.
+    """
+    if package_versions is None:
+        package_versions = dict()
+
+    os_type = str(os_type)
+
+    package_versions_for_hash = package_versions.get(sha1, dict())
+    if os_type not in package_versions_for_hash:
+        package_version = package_version_for_hash(
+            sha1,
+            distro=os_type
+        )
+        package_versions_for_hash[os_type] = package_version
+        package_versions[sha1] = package_versions_for_hash
+
+    return package_versions
+
+
+def has_packages_for_distro(sha1, os_type, package_versions=None):
+    """
+    Checks to see if gitbuilder has packages for the given sha1 and os_type.
+
+    Optionally, a package_versions dict can be provided
+    from previous calls to this function to avoid calling gitbuilder for
+    information we've already retrieved.
+
+    The package_versions dict will be in the following format::
+
+        {
+            "sha1": {
+                "ubuntu": "version",
+                "rhel": "version",
+            },
+            "another-sha1": {
+                "ubuntu": "version",
+            }
+        }
+
+    :param sha1:             The sha1 hash of the ceph version.
+    :param os_type:          The distro we want to get packages for, given
+                             the ceph sha1. Ex. 'ubuntu', 'rhel', etc.
+    :param package_versions: Use this optionally to use cached results of
+                             previous calls to gitbuilder.
+    :returns:                True, if packages are found. False otherwise.
+    """
+    os_type = str(os_type)
+    if package_versions is None:
+        package_versions = get_package_versions(sha1, os_type)
+
+    package_versions_for_hash = package_versions.get(sha1, dict())
+    # we want to return a boolean here, not the actual package versions
+    return bool(package_versions_for_hash.get(os_type, None))
 
 
 def combine_path(left, right):
@@ -636,7 +776,9 @@ class Placeholder(object):
 
 def substitute_placeholders(input_dict, values_dict):
     """
-    Replace any Placeholder instances with values named in values_dict.
+    Replace any Placeholder instances with values named in values_dict. In the
+    case of None values, the key is omitted from the result.
+
     Searches through nested dicts.
 
     :param input_dict:  A dict which may contain one or more Placeholder
@@ -649,10 +791,13 @@ def substitute_placeholders(input_dict, values_dict):
     input_dict = copy.deepcopy(input_dict)
 
     def _substitute(input_dict, values_dict):
-        for (key, value) in input_dict.iteritems():
+        for key, value in input_dict.items():
             if isinstance(value, dict):
                 _substitute(value, values_dict)
             elif isinstance(value, Placeholder):
+                if values_dict[value.name] is None:
+                    del input_dict[key]
+                    continue
                 # If there is a Placeholder without a corresponding entry in
                 # values_dict, we will hit a KeyError - we want this.
                 input_dict[key] = values_dict[value.name]
@@ -664,6 +809,7 @@ def substitute_placeholders(input_dict, values_dict):
 # Template for the config that becomes the base for each generated job config
 dict_templ = {
     'branch': Placeholder('ceph_branch'),
+    'sha1': Placeholder('ceph_hash'),
     'teuthology_branch': Placeholder('teuthology_branch'),
     'machine_type': Placeholder('machine_type'),
     'nuke-on-error': True,

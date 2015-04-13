@@ -1,22 +1,13 @@
-from cStringIO import StringIO
-from .orchestra import run
 import logging
-import teuthology.misc as teuthology
-import textwrap
+import ast
+import re
+
+from cStringIO import StringIO
+
+from teuthology import misc
+from .config import config
 
 log = logging.getLogger(__name__)
-
-'''
-Infer things about platform type with this map.
-The key comes from processing lsb_release -ics or -irs (see _get_relmap).
-'''
-_RELEASE_MAP = {
-    'Ubuntu precise': dict(flavor='deb', release='ubuntu', version='precise'),
-    'Debian wheezy': dict(flavor='deb', release='debian', version='wheezy'),
-    'CentOS 6.4': dict(flavor='rpm', release='centos', version='6.4'),
-    'RedHatEnterpriseServer 6.4': dict(flavor='rpm', release='rhel',
-                                       version='6.4'),
-}
 
 '''
 Map 'generic' package name to 'flavor-specific' package name.
@@ -36,34 +27,11 @@ _SERVICE_MAP = {
 }
 
 
-def _get_relmap(rem):
-    """
-    Internal worker to get the appropriate dict from RELEASE_MAP
-    """
-    relmap = getattr(rem, 'relmap', None)
-    if relmap is not None:
-        return relmap
-    lsb_release_out = StringIO()
-    rem.run(args=['lsb_release', '-ics'], stdout=lsb_release_out)
-    release = lsb_release_out.getvalue().replace('\n', ' ').rstrip()
-    if release in _RELEASE_MAP:
-        rem.relmap = _RELEASE_MAP[release]
-        return rem.relmap
-    else:
-        lsb_release_out = StringIO()
-        rem.run(args=['lsb_release', '-irs'], stdout=lsb_release_out)
-        release = lsb_release_out.getvalue().replace('\n', ' ').rstrip()
-        if release in _RELEASE_MAP:
-            rem.relmap = _RELEASE_MAP[release]
-            return rem.relmap
-    raise RuntimeError('Can\'t get release info for {}'.format(rem))
-
-
 def get_package_name(pkg, rem):
     """
     Find the remote-specific name of the generic 'pkg'
     """
-    flavor = _get_relmap(rem)['flavor']
+    flavor = misc.get_system_type(rem)
 
     try:
         return _PACKAGE_MAP[pkg][flavor]
@@ -75,112 +43,11 @@ def get_service_name(service, rem):
     """
     Find the remote-specific name of the generic 'service'
     """
-    flavor = _get_relmap(rem)['flavor']
+    flavor = misc.get_system_type(rem)
     try:
         return _SERVICE_MAP[service][flavor]
     except KeyError:
         return None
-
-
-def install_repo(remote, reposerver, pkgdir, username=None, password=None):
-    """
-    Install a package repo for reposerver on remote.
-    URL will be http if username and password are none, otherwise https.
-    pkgdir is the piece path between "reposerver" and "deb" or "rpm"
-     (say, 'packages', or 'packages-staging/my-branch', for example).
-    so:
-        http[s]://[<username>:<password>@]<reposerver>/<pkgdir>/{deb|rpm}
-    will be written to deb's apt inktank.list or rpm's inktank.repo
-    """
-
-    relmap = _get_relmap(remote)
-    log.info('Installing repo on %s', remote)
-    if username is None or password is None:
-        repo_uri = 'http://{reposerver}/{pkgdir}'
-    else:
-        repo_uri = 'https://{username}:{password}@{reposerver}/{pkgdir}'
-
-    if relmap['flavor'] == 'deb':
-        contents = 'deb ' + repo_uri + '/deb {codename} main'
-        contents = contents.format(username=username, password=password,
-                                   reposerver=reposerver, pkgdir=pkgdir,
-                                   codename=relmap['version'],)
-        teuthology.sudo_write_file(remote,
-                                   '/etc/apt/sources.list.d/inktank.list',
-                                   contents)
-        remote.run(args=['sudo',
-                         'apt-get',
-                         'install',
-                         'apt-transport-https',
-                         '-y'])
-        result = remote.run(args=['sudo', 'apt-get', 'update', '-y'],
-                            stdout=StringIO())
-        return result
-
-    elif relmap['flavor'] == 'rpm':
-        baseurl = repo_uri + '/rpm/{release}{version}'
-        contents = textwrap.dedent('''
-            [inktank]
-            name=Inktank Storage, Inc.
-            baseurl={baseurl}
-            gpgcheck=1
-            enabled=1
-            '''.format(baseurl=baseurl))
-        contents = contents.format(username=username,
-                                   password=password,
-                                   pkgdir=pkgdir,
-                                   release=relmap['release'],
-                                   version=relmap['version'])
-        teuthology.sudo_write_file(remote,
-                                   '/etc/yum.repos.d/inktank.repo',
-                                   contents)
-        return remote.run(args=['sudo', 'yum', 'makecache'])
-
-    else:
-        return False
-
-
-def remove_repo(remote):
-    log.info('Removing repo on %s', remote)
-    flavor = _get_relmap(remote)['flavor']
-    if flavor == 'deb':
-        teuthology.delete_file(remote, '/etc/apt/sources.list.d/inktank.list',
-                               sudo=True, force=True)
-        result = remote.run(args=['sudo', 'apt-get', 'update', '-y'],
-                            stdout=StringIO())
-        return result
-
-    elif flavor == 'rpm':
-        teuthology.delete_file(remote, '/etc/yum.repos.d/inktank.repo',
-                               sudo=True, force=True)
-        return remote.run(args=['sudo', 'yum', 'makecache'])
-
-    else:
-        return False
-
-
-def install_repokey(remote, keyurl):
-    """
-    Install a repo key from keyurl on remote.
-    Installing keys is assumed to be idempotent.
-    Example keyurl: 'http://download.inktank.com/keys/release.asc'
-    """
-    log.info('Installing repo key on %s', remote)
-    flavor = _get_relmap(remote)['flavor']
-    if flavor == 'deb':
-        return remote.run(args=['wget',
-                                '-q',
-                                '-O-',
-                                keyurl,
-                                run.Raw('|'),
-                                'sudo',
-                                'apt-key',
-                                'add',
-                                '-'])
-    elif flavor == 'rpm':
-        return remote.run(args=['sudo', 'rpm', '--import', keyurl])
-    else:
-        return False
 
 
 def install_package(package, remote):
@@ -189,7 +56,7 @@ def install_package(package, remote):
     Assumes repo has already been set up (perhaps with install_repo)
     """
     log.info('Installing package %s on %s', package, remote)
-    flavor = _get_relmap(remote)['flavor']
+    flavor = misc.get_system_type(remote)
     if flavor == 'deb':
         pkgcmd = ['DEBIAN_FRONTEND=noninteractive',
                   'sudo',
@@ -214,7 +81,7 @@ def remove_package(package, remote):
     """
     Remove package from remote
     """
-    flavor = _get_relmap(remote)['flavor']
+    flavor = misc.get_system_type(remote)
     if flavor == 'deb':
         pkgcmd = ['DEBIAN_FRONTEND=noninteractive',
                   'sudo',
@@ -233,3 +100,140 @@ def remove_package(package, remote):
         log.error('remove_package: bad flavor ' + flavor + '\n')
         return False
     return remote.run(args=pkgcmd)
+
+
+def get_koji_build_info(build_id, remote, ctx):
+    """
+    Queries kojihub and retrieves information about
+    the given build_id. The package, koji, must be installed
+    on the remote for this command to work.
+
+    We need a remote here because koji can only be installed
+    on rpm based machines and teuthology runs on Ubuntu.
+
+    Here is an example of the build info returned:
+
+    {'owner_name': 'kdreyer', 'package_name': 'ceph',
+     'task_id': 8534149, 'completion_ts': 1421278726.1171,
+     'creation_event_id': 10486804, 'creation_time': '2015-01-14 18:15:17.003134',
+     'epoch': None, 'nvr': 'ceph-0.80.5-4.el7ost', 'name': 'ceph',
+     'completion_time': '2015-01-14 18:38:46.1171', 'state': 1, 'version': '0.80.5',
+     'volume_name': 'DEFAULT', 'release': '4.el7ost', 'creation_ts': 1421277317.00313,
+     'package_id': 34590, 'id': 412677, 'volume_id': 0, 'owner_id': 2826
+    }
+
+    :param build_id:  The brew build_id we want to retrieve info on.
+    :param remote:    The remote to run the koji command on.
+    :param ctx:       The ctx from the current run, used to provide a
+                      failure_reason and status if the koji command fails.
+    :returns:         A python dict containing info about the build.
+    """
+    py_cmd = ('import koji; '
+              'hub = koji.ClientSession("{kojihub_url}"); '
+              'print hub.getBuild({build_id})')
+    py_cmd = py_cmd.format(
+        build_id=build_id,
+        kojihub_url=config.kojihub_url
+    )
+    proc = remote.run(
+        args=[
+            'python', '-c', py_cmd
+        ],
+        stdout=StringIO(), stderr=StringIO(), check_status=False
+    )
+    if proc.exitstatus == 0:
+        # returns the __repr__ of a python dict
+        stdout = proc.stdout.getvalue().strip()
+        # take the __repr__ and makes it a python dict again
+        build_info = ast.literal_eval(stdout)
+    else:
+        msg = "Failed to query koji for build {0}".format(build_id)
+        log.error(msg)
+        log.error("stdout: {0}".format(proc.stdout.getvalue().strip()))
+        log.error("stderr: {0}".format(proc.stderr.getvalue().strip()))
+        ctx.summary["failure_reason"] = msg
+        ctx.summary["status"] = "dead"
+        raise RuntimeError(msg)
+
+    return build_info
+
+
+def get_kojiroot_base_url(build_info, arch="x86_64"):
+    """
+    Builds the base download url for kojiroot given the current
+    build information.
+
+    :param build_info:  A dict of koji build information, possibly
+                        retrieved from get_koji_build_info.
+    :param arch:        The arch you want to download rpms for.
+    :returns:           The base_url to use when downloading rpms
+                        from brew.
+    """
+    base_url = "{kojiroot}/{package_name}/{ver}/{rel}/{arch}/".format(
+        kojiroot=config.kojiroot_url,
+        package_name=build_info["package_name"],
+        ver=build_info["version"],
+        rel=build_info["release"],
+        arch=arch,
+    )
+    return base_url
+
+
+def get_koji_package_name(package, build_info, arch="x86_64"):
+    """
+    Builds the package name for a brew rpm.
+
+    :param package:     The name of the package
+    :param build_info:  A dict of koji build information, possibly
+                        retrieved from get_brew_build_info.
+    :param arch:        The arch you want to download rpms for.
+    :returns:           A string representing the file name for the
+                        requested package in koji.
+    """
+    pkg_name = "{name}-{ver}-{rel}.{arch}.rpm".format(
+        name=package,
+        ver=build_info["version"],
+        rel=build_info["release"],
+        arch=arch,
+    )
+
+    return pkg_name
+
+
+def get_package_version(remote, package):
+    installed_ver = None
+    if remote.os.package_type == "deb":
+        proc = remote.run(
+            args=[
+                'dpkg-query', '-W', '-f', '${Version}', package
+            ],
+            stdout=StringIO(),
+        )
+    else:
+        proc = remote.run(
+            args=[
+                'rpm', '-q', package, '--qf', '%{VERSION}'
+            ],
+            stdout=StringIO(),
+        )
+    if proc.exitstatus == 0:
+        installed_ver = proc.stdout.getvalue().strip()
+        # Does this look like a version string?
+        # this assumes a version string starts with non-alpha characters
+        if installed_ver and re.match('^[^a-zA-Z]', installed_ver):
+            log.info("The installed version of {pkg} is {ver}".format(
+                pkg=package,
+                ver=installed_ver,
+            ))
+        else:
+            installed_ver = None
+    else:
+        # should this throw an exception and stop the job?
+        log.warning(
+            "Unable to determine if {pkg} is installed: {stdout}".format(
+                pkg=package,
+                stdout=proc.stdout.getvalue().strip(),
+            )
+        )
+
+    return installed_ver
