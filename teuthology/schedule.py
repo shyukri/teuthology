@@ -2,7 +2,7 @@ import pprint
 import yaml
 
 import teuthology.beanstalk
-from teuthology.misc import get_user, merge_configs
+from teuthology.misc import get_user, merge_configs, deep_merge
 from teuthology import report
 
 

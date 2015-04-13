@@ -418,7 +418,7 @@ def get_gitbuilder_url(project, distro, pkg_type, arch, kernel_flavor):
     :param arch:          A string like 'x86_64'
     :param kernel_flavor: A string like 'basic'
     """
-    templ = 'http://{host}/{proj}-{pkg}-{distro}-{arch}-{flav}/'
+    templ = 'http://gitbuilder.ceph.com/{proj}-{pkg}-{distro}-{arch}-{flav}/'
     return templ.format(proj=project, pkg=pkg_type, distro=distro, arch=arch,
                         flav=kernel_flavor, host=config.gitbuilder_host)
 
@@ -520,7 +520,7 @@ def schedule_suite(job_config,
         # We should not run multiple tests (changing distros) unless the
         # machine is a VPS.
         # Re-imaging baremetal is not yet supported.
-        if machine_type != 'vps' and os_type and os_type != 'ubuntu':
+        if machine_type != 'vps' and os_type and os_type != 'sles':
             log.info(
                 'Skipping due to non-ubuntu on baremetal facets %s',
                 description)
