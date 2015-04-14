@@ -8,8 +8,8 @@ from traceback import format_tb
 
 import teuthology
 from . import report
-from .misc import get_user
-from .misc import read_config
+from .job_status import get_status
+from .misc import get_user, merge_configs
 from .nuke import nuke
 from .run_tasks import run_tasks
 from .repo_utils import fetch_qa_suite
@@ -149,7 +149,19 @@ def get_summary(owner, description):
     return summary
 
 
-    for task in ctx.config['tasks']:
+def validate_tasks(config):
+    """
+    Ensures that config tasks do not include 'kernel'.
+
+    Returns the original tasks key if found.  If not, returns an
+    empty list.
+    """
+    if 'tasks' not in config:
+        log.warning('No tasks specified. Continuing anyway...')
+        # return the default value for tasks
+        return []
+
+    for task in config['tasks']:
         msg = ('kernel installation shouldn be a base-level item, not part ' +
                'of the tasks list')
         assert 'kernel' not in task, msg
@@ -331,30 +343,5 @@ def main(args):
     try:
         run_tasks(tasks=config['tasks'], ctx=fake_ctx)
     finally:
-        if not ctx.summary.get('success') and bool(ctx.config.get('nuke-on-error')):
-            # only unlock if we locked them in the first place
-            nuke(ctx, ctx.lock)
-        if ctx.archive is not None:
-            with file(os.path.join(ctx.archive, 'summary.yaml'), 'w') as f:
-                yaml.safe_dump(ctx.summary, f, default_flow_style=False)
-        with contextlib.closing(StringIO.StringIO()) as f:
-            yaml.safe_dump(ctx.summary, f)
-            log.info('Summary data:\n%s' % f.getvalue())
-        with contextlib.closing(StringIO.StringIO()) as f:
-            if ('email-on-error' in ctx.config
-                    and not ctx.summary.get('success', False)):
-                yaml.safe_dump(ctx.summary, f)
-                yaml.safe_dump(ctx.config, f)
-                emsg = f.getvalue()
-                subject = "Teuthology error -- %s" % ctx.summary[
-                    'failure_reason']
-                email_results(subject, "Teuthology", ctx.config[
-                              'email-on-error'], emsg)
-
-        report.try_push_job_info(ctx.config, ctx.summary)
-
-        if ctx.summary.get('success', True):
-            log.info('pass')
-        else:
-            log.info('FAIL')
-            sys.exit(1)
+        # print to stdout the results and possibly send an email on any errors
+        report_outcome(config, archive, fake_ctx.summary, fake_ctx)
