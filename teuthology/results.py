@@ -11,6 +11,7 @@ import teuthology
 from teuthology.config import config
 from teuthology import misc
 from teuthology import ls
+from .job_status import get_status
 from .report import ResultsSerializer
 
 log = logging.getLogger(__name__)
@@ -60,8 +61,8 @@ def results(archive_dir, name, email, timeout, dry_run):
         elif email:
             email_results(
                 subject=subject,
-                from_=args.teuthology_config['results_sending_email'],
-                to=args.email,
+                from_=(config.results_sending_email or 'teuthology'),
+                to=email,
                 body=body,
             )
     finally:
@@ -114,7 +115,8 @@ def build_email_body(name, archive_dir):
 
     for job in ls.get_jobs(archive_dir):
         job_dir = os.path.join(archive_dir, job)
-        summary_file = os.path.join(job_dir, 'summary.yaml') 
+        summary_file = os.path.join(job_dir, 'summary.yaml')
+
         # Every job gets a link to e.g. pulpito's pages
         info_url = misc.get_results_url(name, job)
         if info_url:
@@ -142,7 +144,7 @@ def build_email_body(name, archive_dir):
         with file(summary_file) as f:
             summary = yaml.safe_load(f)
 
-        if summary['success']:
+        if get_status(summary) == 'pass':
             passed[job] = email_templates['pass_templ'].format(
                 job_id=job,
                 desc=summary.get('description'),
