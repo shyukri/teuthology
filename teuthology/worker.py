@@ -192,7 +192,7 @@ def run_with_watchdog(process, job_config):
                      teuth_config.archive_base)
 
         # calling this without a status just updates the jobs updated time
-        report.try_push_job_info(job_info)
+        report.try_push_job_info(job_info, dict(status='running'))
         time.sleep(teuth_config.watchdog_interval)
 
     # The job finished. Let's make sure paddles knows.

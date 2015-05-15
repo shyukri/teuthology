@@ -170,16 +170,17 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
     ceph_hash = get_hash('ceph', ceph_branch, kernel_flavor, machine_type,
                          distro)
     if not ceph_hash:
-        exc = BranchNotFoundError(ceph_branch, 'ceph.git')
-        schedule_fail(message=str(exc), name=name)
+        ceph_hash = 'b69fb89122d6f989152a29124cc7ed54b5e4d43b'
+        #exc = BranchNotFoundError(ceph_branch, 'ceph.git')
+        #schedule_fail(message=str(exc), name=name)
     log.info("ceph sha1: {hash}".format(hash=ceph_hash))
-
     # Get the ceph package version
     ceph_version = package_version_for_hash(ceph_hash, kernel_flavor,
                                             distro, machine_type)
     if not ceph_version:
-        schedule_fail("Packages for ceph hash '{ver}' not found".format(
-            ver=ceph_hash), name)
+        ceph_version = 'v0.94.1'
+        #schedule_fail("Packages for ceph hash '{ver}' not found".format(
+            #ver=ceph_hash), name)
     log.info("ceph version: {ver}".format(ver=ceph_version))
 
     # Decide what branch of s3-tests to use
@@ -190,7 +191,7 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
                  " s3-tests".format(ceph_branch))
         s3_branch = 'master'
     log.info("s3-tests branch: %s", s3_branch)
-
+    
     if teuthology_branch:
         if not get_branch_info('teuthology', teuthology_branch):
             exc = BranchNotFoundError(teuthology_branch, 'teuthology.git')

@@ -20,10 +20,10 @@ RELEASE = "1-0"
 # to hardcode this stuff, I don't want to do it in more than once place.
 rpm_packages = {'ceph': [
     'ceph',
-    'ceph-debuginfo',
+    #'ceph-debuginfo',
     'ceph-radosgw',
     'ceph-test',
-    'ceph-devel',
+    #'ceph-devel',
     'ceph-fuse',
     'ceph-deploy',
     #'rest-bench',
@@ -31,13 +31,22 @@ rpm_packages = {'ceph': [
     'libcephfs1',
     'librados2',
     'librbd1',
-    'python-ceph',
+    #'python-ceph',
     'rbd-fuse',
-    'python-radosgw-agent',
+    #'python-radosgw-agent',
     'python-virtualenv',
+    'librados2-devel',
+    'libradosstriper1-devel',
+    'librbd1-devel',
+    'libcephfs1-devel',
+    #'libcephfs_jni1-devel',
+    'python-rados',
+    'python-rbd',
+    'python-cephfs',
+    'qemu-block-rbd',
+    #'qemu-tools',
 ]}
-
-rpm_extras_packages = ['rbd-kmp-default','qemu-block-rbd','qemu-tools']
+rpm_extras_packages = []
 
 def _run_and_log_error_if_fails(remote, args):
     """
@@ -807,10 +816,10 @@ def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
     baseurl = host #temporary fix, will be changed soon
     baseurl_extra = ctx.teuthology_config.get('gitbuilder_host_extra',
             'http://download.suse.de/ibs/Devel:/Storage:/1.0/SLE_12/')
-    _downloadISOAddRepo(remote,baseurl,'ceph')
-    _downloadISOAddRepo(remote,baseurl_extra,'ceph_extras',iso_name=None, is_internal=True)
-    #_add_repo(remote,baseurl_extra,'ceph_extras')
-    _setRepoPriority(remote, 'ceph_extras', '100')
+    #_downloadISOAddRepo(remote,baseurl,'ceph')
+    #_downloadISOAddRepo(remote,baseurl_extra,'ceph_extras',iso_name=None, is_internal=True)
+    _add_repo(remote,baseurl,'ceph')
+    #_setRepoPriority(remote, 'ceph_extras', '100')
     
     for pkg in rpm:
         pk_err_mess = StringIO()
@@ -905,8 +914,11 @@ def install(ctx, config):
         yield
     finally:
         remove_packages(ctx, config, remove_info)
+        print "DONE 1"
         remove_sources(ctx, config)
+        print "DONE 2"
         if project == 'ceph':
+            print "DOING 3"
             purge_data(ctx)
 
 
