@@ -74,7 +74,7 @@ def lock_machines(ctx, config):
     to_reserve = 0
 
     # change the status during the locking process
-    report.try_push_job_info(ctx.config, dict(status='waiting'))
+    #report.try_push_job_info(ctx.config, dict(status='waiting'))
 
     while True:
         # get a candidate list of machines
@@ -143,7 +143,7 @@ def lock_machines(ctx, config):
             ).splitlines()
             log.info('\n  '.join(['Locked targets:', ] + locked_targets))
             # successfully locked machines, change status back to running
-            report.try_push_job_info(ctx.config, dict(status='running'))
+            #report.try_push_job_info(ctx.config, dict(status='running'))
             break
         elif not ctx.block:
             assert 0, 'not enough machines are available'

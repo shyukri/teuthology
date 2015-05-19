@@ -1,0 +1,29 @@
+check-locks: false
+nuke-on-error: false
+unlock_on_failure: true
+os_version: 12
+os_type: SLES
+overrides:
+  workunit:
+    branch: hammer
+  ceph:
+    conf:
+      mon:
+        debug mon: 20
+        debug ms: 1
+        debug paxos: 20
+        mon warn on legacy crush tunables: false
+        mon min osdmap epochs: 3
+      osd:
+        osd map cache size: 2
+        osd map max advance: 1
+        debug filestore: 20
+        debug journal: 20
+        debug ms: 1
+        debug osd: 20
+    log-whitelist:
+    - osd_map_cache_size
+    - slow request
+    - scrub mismatch
+    - ScrubResult
+
