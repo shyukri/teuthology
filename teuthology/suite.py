@@ -808,7 +808,7 @@ def substitute_placeholders(input_dict, values_dict):
 
 
 # Template for the config that becomes the base for each generated job config
-dict_templ = {
+dict_templ_new = {
     'branch': Placeholder('ceph_branch'),
     'sha1': Placeholder('ceph_hash'),
     'teuthology_branch': Placeholder('teuthology_branch'),
@@ -821,7 +821,7 @@ dict_templ = {
 
 
 
-dict_templ_old = {
+dict_templ = {
     'branch': Placeholder('ceph_branch'),
     'teuthology_branch': Placeholder('teuthology_branch'),
     'machine_type': Placeholder('machine_type'),

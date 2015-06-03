@@ -122,7 +122,7 @@ def main(ctx):
             # last-in-suite jobs don't have suite_branch or branch set.
             ceph_branch = job_config.get('branch', 'master')
             suite_branch = job_config.get('suite_branch', ceph_branch)
-            job_config['suite_path'] = '/home/jenkins/src/ceph-qa-suite_firefly'#fetch_qa_suite(suite_branch)
+            job_config['suite_path'] = fetch_qa_suite(suite_branch)#'/home/jenkins/src/ceph-qa-suite_firefly'
         except BranchNotFoundError:
             log.exception(
                 "Branch not found; throwing job away")
