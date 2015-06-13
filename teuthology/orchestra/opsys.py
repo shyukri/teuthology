@@ -77,6 +77,9 @@ class OS(object):
         name = obj._get_value(str_, 'Distributor ID')
         if name == 'RedHatEnterpriseServer':
             name = 'rhel'
+        if name == 'SUSE LINUX':
+            name = 'suse'
+
         obj.name = name.lower()
 
         obj.version = obj._get_value(str_, 'Release')
@@ -109,6 +112,8 @@ class OS(object):
         obj = cls()
         str_ = os_release_str.strip()
         obj.name = cls._get_value(str_, 'ID').lower()
+        if obj.name == 'sles'
+            obj.name = 'suse'
         obj.version = cls._get_value(str_, 'VERSION_ID')
         obj.codename = None
 
