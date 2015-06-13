@@ -6,6 +6,7 @@ from paramiko import ChannelFile
 
 import gevent
 import gevent.event
+import socket
 import pipes
 import logging
 import shutil
@@ -99,7 +100,7 @@ class RemoteProcess(object):
                 # command either died due to a signal, or the connection
                 # was lost
                 transport = self.client.get_transport()
-                if not transport.is_active():
+                if transport is None or not transport.is_active():
                     # look like we lost the connection
                     raise ConnectionLostError(command=self.command,
                                               node=self.hostname)
@@ -165,6 +166,9 @@ def quote(args):
     """
     Internal quote wrapper.
     """
+    if isinstance(args, basestring):
+        return args
+
     def _quote(args):
         """
         Handle quoted string, testing for raw charaters.
@@ -323,7 +327,10 @@ def run(
                  host
     :param label: Can be used to label or describe what the command is doing.
     """
-    (host, port) = client.get_transport().getpeername()
+    try:
+        (host, port) = client.get_transport().getpeername()
+    except socket.error:
+        raise ConnectionLostError(command=quote(args), node=name)
 
     if name is None:
         name = host
