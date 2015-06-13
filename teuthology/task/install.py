@@ -20,7 +20,7 @@ RELEASE = "1-0"
 # to hardcode this stuff, I don't want to do it in more than once place.
 rpm_packages = {'ceph': [
     'ceph',
-    #'ceph-debuginfo',
+    'ceph-debuginfo',
     'ceph-radosgw',
     'ceph-test',
     #'ceph-devel',
