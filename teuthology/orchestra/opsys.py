@@ -47,6 +47,8 @@ class OS(object):
             name = 'centos'
         elif name.startswith('fedora'):
             name = 'fedora'
+        elif name.startswith('suse'):
+            name = 'suse'
         obj = cls()
         obj.name = name
         obj.version = version
@@ -112,7 +114,7 @@ class OS(object):
         obj = cls()
         str_ = os_release_str.strip()
         obj.name = cls._get_value(str_, 'ID').lower()
-        if obj.name == 'sles'
+        if obj.name == 'sles':
             obj.name = 'suse'
         obj.version = cls._get_value(str_, 'VERSION_ID')
         obj.codename = None

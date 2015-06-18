@@ -6,3 +6,5 @@ os_type: SLES
 overrides:
   workunit:
     branch: hammer
+  s3tests:
+    branch: hammer

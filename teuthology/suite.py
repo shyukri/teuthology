@@ -207,7 +207,7 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
     log.info("teuthology branch: %s", teuthology_branch)
 
     if suite_branch:
-        if not get_branch_info('ceph-qa-suite', suite_branch):
+        if not get_branch_info('ceph-qa-suite', suite_branch, 'SUSE'):
             exc = BranchNotFoundError(suite_branch, 'ceph-qa-suite.git')
             schedule_fail(message=str(exc), name=name)
     else:
@@ -455,6 +455,8 @@ def get_branch_info(project, branch, project_owner='ceph'):
     url_templ = 'https://api.github.com/repos/{project_owner}/{project}/git/refs/heads/{branch}'  # noqa
     url = url_templ.format(project_owner=project_owner, project=project,
                            branch=branch)
+
+    print 'URL+++ '+str(url)
     resp = requests.get(url)
     if resp.ok:
         return resp.json()
