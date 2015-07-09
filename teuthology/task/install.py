@@ -553,7 +553,8 @@ def _remove_sources_list_rpm(remote, proj):
         args=[
             'sudo', 'zypper', '--non-interactive', 'rm', run.Raw('$('),
              'zypper', '--disable-system-resolvables', '-s',
-             '0', 'packages', '-r', '{proj}'.format(proj=proj), run.Raw('|'), 'tail', 
+             '0', 'packages', '-r', '{proj}'.format(proj=proj), run.Raw('|'), 
+             'grep', '-v', 'kernel', run.Raw('|'),'tail', 
              '-n', run.Raw('+4'), run.Raw('|'), 'cut', run.Raw("-d'|'"), 
              run.Raw('-f3'), run.Raw('|'), 'sort', '-u', run.Raw(')'),
              run.Raw('||'),
@@ -567,7 +568,8 @@ def _remove_sources_list_rpm(remote, proj):
         args=[
             'sudo', 'zypper', '--non-interactive', 'rm', run.Raw('$('),
              'zypper', '--disable-system-resolvables', '-s',
-             '0', 'packages', '-r', 'ceph_extras', run.Raw('|'), 'tail',
+             '0', 'packages', '-r', 'ceph_extras', run.Raw('|'), 
+             'grep', '-v', 'kernel', run.Raw('|'),'tail',
              '-n', run.Raw('+4'), run.Raw('|'), 'cut', run.Raw("-d'|'"),
              run.Raw('-f3'), run.Raw('|'), 'sort', '-u', run.Raw(')'),
              run.Raw('||'),
