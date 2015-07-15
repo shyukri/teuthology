@@ -33,13 +33,13 @@ rpm_packages = {'ceph': [
     'librbd1',
     #'python-ceph',
     'rbd-fuse',
-    #'python-radosgw-agent',
+    'python-radosgw-agent',
     'python-virtualenv',
-    'librados2-devel',
-    'libradosstriper1-devel',
-    'librbd1-devel',
-    'libcephfs1-devel',
-    #'libcephfs_jni1-devel',
+    #'librados2-devel',
+    #'libradosstriper1-devel',
+    #'librbd1-devel',
+    #'libcephfs1-devel',
+    ##'libcephfs_jni1-devel',
     'python-rados',
     'python-rbd',
     'python-cephfs',
@@ -47,6 +47,11 @@ rpm_packages = {'ceph': [
     #'qemu-tools',
 ]}
 rpm_extras_packages = []
+
+PACKAGES = {}
+PACKAGES['ceph'] = {}
+PACKAGES['ceph']['rpm']=rpm_packages['ceph']
+PACKAGES['ceph']['deb']=rpm_packages['ceph']
 
 def _run_and_log_error_if_fails(remote, args):
     """

@@ -265,15 +265,24 @@ def dpkg_configure(ctx):
 def remove_installed_packages(ctx):
     dpkg_configure(ctx)
     conf = {'project': 'ceph'}
-    install_task.remove_packages(
-        ctx,
-        conf,
-        {"deb": install_task.PACKAGES['ceph']['deb'] +
-         ['salt-common', 'salt-minion', 'calamari-server'],
-         "rpm": install_task.PACKAGES['ceph']['rpm'] +
-         ['salt-common', 'salt-minion', 'calamari-server']})
-    install_task.remove_sources(ctx, conf)
-    install_task.purge_data(ctx)
+    try:
+        install_task.remove_packages(
+            ctx,
+            conf,
+            {"deb": install_task.PACKAGES['ceph']['deb'] +
+            ['salt-common', 'salt-minion', 'calamari-server'],
+            "rpm": install_task.PACKAGES['ceph']['rpm'] +
+            ['salt-common', 'salt-minion', 'calamari-server']})
+    except:
+        pass
+    try:
+        install_task.remove_sources(ctx, conf)
+    except:
+        pass
+    try:
+        install_task.purge_data(ctx)
+    except:
+        pass
 
 
 def remove_testing_tree(ctx):
@@ -286,7 +295,7 @@ def remove_testing_tree(ctx):
                 run.Raw('&&'),
                 'sudo', 'rm', '-rf', '/tmp/cephtest',
                 run.Raw('&&'),
-                'sudo', 'rm', '-rf', '/home/ubuntu/cephtest',
+                'sudo', 'rm', '-rf', '/home/jenkins/cephtest',
                 run.Raw('&&'),
                 'sudo', 'rm', '-rf', '/etc/ceph',
             ],
