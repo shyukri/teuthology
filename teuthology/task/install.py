@@ -703,7 +703,27 @@ def _get_os_version(ctx, remote, config):
     log.info("os is %s" % (retval))
     return retval
     
-    
+
+
+def _remove_repo(remote,reponame):
+    r = remote.run(
+        args=['sudo', 'zypper', '--gpg-auto-import-keys',
+               '--non-interactive', 'refresh'],
+        stdout=StringIO(),
+    )
+
+    r = remote.run(
+        args=['sudo', 'zypper', 'rr', reponame],
+        stdout=StringIO(),
+    )
+
+    r = remote.run(
+        args=['sudo', 'zypper', '--gpg-auto-import-keys',
+               '--non-interactive', 'refresh'],
+        stdout=StringIO(),
+    )
+
+ 
 def _add_repo(remote,baseurl,reponame):
     err_mess = StringIO()
     try:
@@ -810,14 +830,26 @@ def _downloadISOAddRepo(remote,baseurl,reponame,iso_name=None, is_internal=False
 
 
 
-
+def _upgrade_rpm_packages(ctx, config, remote, pkgs):
+    host = ctx.teuthology_config.get('gitbuilder_host',
+             'download.suse.de/ibs/Devel:/Storage:/0.5:/Staging/')
+    baseurl = host
+    _remove_repo(remote,'ceph')
+    _add_repo(remote,baseurl,'ceph')
+    pk_err_mess = StringIO()
+    remote.run(args=['sudo', 'zypper', '--non-interactive',
+               '--no-gpg-checks', '--quiet', 'dup', '--replacefiles','-r', 'ceph', ],
+               stderr=pk_err_mess)
 
     
 def _update_rpm_package_list_and_install(ctx, remote, rpm, config):
     baseparms = _get_os_version(ctx, remote, config)
     log.info("Installing packages: {pkglist} on remote os {os}".format(
         pkglist=", ".join(rpm), os=baseparms))
-    host = ctx.teuthology_config.get('gitbuilder_host',
+    if 'upgrade' in ctx.config.get('suite'):
+        host = ctx.teuthology_config.get('pre_upgrade_url')
+    else:
+        host = ctx.teuthology_config.get('gitbuilder_host',
             'download.suse.de/ibs/Devel:/Storage:/0.5:/Staging/')
     baseurl = host+baseparms
     baseurl = host #temporary fix, will be changed soon
@@ -1024,7 +1056,7 @@ def upgrade_common(ctx, config, deploy_style):
         node['project'] = project
         
         deploy_style(ctx, node, remote, pkgs, system_type)
-        verify_package_version(ctx, node, remote)
+        #verify_package_version(ctx, node, remote)
 
 
 docstring_for_upgrade = """"
