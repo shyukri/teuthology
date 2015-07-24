@@ -838,7 +838,7 @@ def _upgrade_rpm_packages(ctx, config, remote, pkgs):
     _add_repo(remote,baseurl,'ceph')
     pk_err_mess = StringIO()
     remote.run(args=['sudo', 'zypper', '--non-interactive',
-               '--no-gpg-checks', '--quiet', 'dup', '--replacefiles','-r', 'ceph', ],
+               '--no-gpg-checks', '--quiet', 'dup', '--replacefiles','--from', 'ceph', ],
                stderr=pk_err_mess)
 
     
