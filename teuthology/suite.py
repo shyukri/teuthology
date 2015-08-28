@@ -1013,7 +1013,7 @@ dict_templ = {
         },
         'ceph-deploy': {
             'branch': {
-                'dev': Placeholder('ceph_branch'),
+                'dev-commit': Placeholder('ceph_hash'),
             },
             'conf': {
                 'client': {
