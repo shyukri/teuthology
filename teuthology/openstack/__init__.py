@@ -492,7 +492,7 @@ ssh access           : ssh {identity}{username}@{ip} # logs in /usr/share/nginx/
                 ).format(arg=arg, value=getattr(self.args, arg))
                 self.ssh(command)
         argv.append('/home/' + self.username +
-                    '/teuthology/teuthology/openstack/test/openstack.yaml')
+                    '/teuthology/teuthology/openstack/openstack.yaml')
         command = (
             "source ~/.bashrc_teuthology ; " + self.teuthology_suite + " " +
             " --machine-type openstack " +
