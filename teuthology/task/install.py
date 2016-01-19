@@ -20,7 +20,7 @@ RELEASE = "1-0"
 # to hardcode this stuff, I don't want to do it in more than once place.
 rpm_packages = {'ceph': [
     'ceph',
-    'ceph-debuginfo',
+    #'ceph-debuginfo',
     'ceph-radosgw',
     'ceph-test',
     #'ceph-devel',
@@ -33,7 +33,7 @@ rpm_packages = {'ceph': [
     'librbd1',
     #'python-ceph',
     'rbd-fuse',
-    'python-radosgw-agent',
+    #'python-radosgw-agent',
     'python-virtualenv',
     #'librados2-devel',
     #'libradosstriper1-devel',
@@ -688,7 +688,7 @@ def _get_os_version(ctx, remote, config):
     assert os_name in os_alias.keys(), \
         "unknown os found %s" %(os_name)
     
-    version_alias = {'11':'11_SP3/', '12':'12/', '13.1':'13.1/'}
+    version_alias = {'11':'11_SP3/', '12':'12/', '13.1':'13.1/', '12.1':'12.1/'}
     r = remote.run(
         args=['lsb_release', '-rs'],
         stdout=StringIO(),

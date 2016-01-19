@@ -169,6 +169,7 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
     # Get the ceph hash
     ceph_hash = get_hash('ceph', ceph_branch, kernel_flavor, machine_type,
                          distro)
+    #ceph_hash = None
     if not ceph_hash:
         ceph_hash = 'b69fb89122d6f989152a29124cc7ed54b5e4d43b'
         #exc = BranchNotFoundError(ceph_branch, 'ceph.git')
@@ -177,8 +178,9 @@ def create_initial_config(suite, suite_branch, ceph_branch, teuthology_branch,
     # Get the ceph package version
     ceph_version = package_version_for_hash(ceph_hash, kernel_flavor,
                                             distro, machine_type)
+    #ceph_version = None
     if not ceph_version:
-        ceph_version = 'v0.94.1'
+        ceph_version = 'v0.94.5'
         #schedule_fail("Packages for ceph hash '{ver}' not found".format(
             #ver=ceph_hash), name)
     log.info("ceph version: {ver}".format(ver=ceph_version))

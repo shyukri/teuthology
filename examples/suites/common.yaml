@@ -1,10 +1,10 @@
 check-locks: false
 #nuke-on-error: false
 unlock_on_failure: true
-os_version: 12
+os_version: 12.1
 os_type: SLES
 overrides:
   workunit:
-    branch: hammer
+    branch: v0.94.5
   s3tests:
     branch: hammer
