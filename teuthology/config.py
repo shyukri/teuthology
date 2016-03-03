@@ -80,6 +80,9 @@ class YamlConfig(collections.MutableMapping):
         """
         return str(self)
 
+    def get(self, key, default=None):
+        return self._conf.get(key, default)
+
     def __str__(self):
         return yaml.safe_dump(self._conf, default_flow_style=False).strip()
 
@@ -126,13 +129,21 @@ class TeuthologyConfig(YamlConfig):
     yaml_path = os.path.join(os.path.expanduser('~/.teuthology.yaml'))
     _defaults = {
         'archive_base': '/var/lib/teuthworker/archive',
+        'archive_upload': None,
+        'archive_upload_key': None,
+        'archive_upload_url': None,
         'automated_scheduling': False,
+        'reserve_machines': 5,
         'ceph_git_base_url': 'https://github.com/ceph/',
+        'ceph_git_url': None,
+        'ceph_qa_suite_git_url': None,
         'gitbuilder_host': 'gitbuilder.ceph.com',
+        'check_package_signatures': True,
         'lab_domain': 'front.sepia.ceph.com',
         'lock_server': 'http://paddles.front.sepia.ceph.com/',
         'max_job_time': 259200,  # 3 days
         'results_server': 'http://paddles.front.sepia.ceph.com/',
+        'results_ui_server': 'http://pulpito.ceph.com/',
         'results_sending_email': 'teuthology',
         'results_timeout': 43200,
         'src_base_path': os.path.expanduser('~/src'),
@@ -140,10 +151,36 @@ class TeuthologyConfig(YamlConfig):
         'watchdog_interval': 120,
         'kojihub_url': 'http://koji.fedoraproject.org/kojihub',
         'kojiroot_url': 'http://kojipkgs.fedoraproject.org/packages',
+        'koji_task_url': 'https://kojipkgs.fedoraproject.org/work/',
+        'baseurl_template': 'http://{host}/{proj}-{pkg_type}-{dist}-{arch}-{flavor}/{uri}',
+        'teuthology_path': None,
+        'suite_verify_ceph_hash': True,
+        'openstack': {
+            'clone': 'git clone http://github.com/ceph/teuthology',
+            'user-data': 'teuthology/openstack/openstack-{os_type}-{os_version}-user-data.txt',
+            'ip': '1.1.1.1',
+            'machine': {
+                'disk': 20,
+                'ram': 8000,
+                'cpus': 1,
+            },
+            'volumes': {
+                'count': 0,
+                'size': 1,
+            },
+        },
     }
 
     def __init__(self, yaml_path=None):
         super(TeuthologyConfig, self).__init__(yaml_path or self.yaml_path)
+
+    def get_ceph_qa_suite_git_url(self):
+        return (self.ceph_qa_suite_git_url or
+                self.ceph_git_base_url + 'ceph-qa-suite.git')
+
+    def get_ceph_git_url(self):
+        return (self.ceph_git_url or
+                self.ceph_git_base_url + 'ceph.git')
 
 
 class JobConfig(YamlConfig):
@@ -152,23 +189,16 @@ class JobConfig(YamlConfig):
 
 class FakeNamespace(YamlConfig):
     """
-    This class is meant to behave like a argparse Namespace. It mimics the old
-    way of doing things with argparse and teuthology.misc.read_config.
+    This class is meant to behave like a argparse Namespace
 
     We'll use this as a stop-gap as we refactor commands but allow the tasks
     to still be passed a single namespace object for the time being.
     """
-    def __init__(self, config_dict=None, yaml_path=None):
-        if not yaml_path:
-            yaml_path = _get_config_path()
+    def __init__(self, config_dict=None):
         if not config_dict:
             config_dict = dict()
         self._conf = self._clean_config(config_dict)
-        # avoiding circular imports
-        from .misc import read_config
-        # teuthology.misc.read_config attaches the teuthology config
-        # to a teuthology_config key.
-        read_config(self)
+        set_config_attr(self)
 
     def _clean_config(self, config_dict):
         """
@@ -202,11 +232,24 @@ class FakeNamespace(YamlConfig):
             return self._defaults[name]
         raise AttributeError(name)
 
+    def __setattr__(self, name, value):
+        if name == 'teuthology_config':
+            object.__setattr__(self, name, value)
+        else:
+            super(FakeNamespace, self).__setattr__(name, value)
+
     def __repr__(self):
         return repr(self._conf)
 
     def __str__(self):
         return str(self._conf)
+
+
+def set_config_attr(obj):
+    """
+    Set obj.teuthology_config, mimicking the old behavior of misc.read_config
+    """
+    obj.teuthology_config = config
 
 
 def _get_config_path():
