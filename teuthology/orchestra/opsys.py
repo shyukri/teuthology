@@ -49,7 +49,7 @@ class OS(object):
     __slots__ = ['name', 'version', 'codename', 'package_type']
 
     _deb_distros = ('debian', 'ubuntu')
-    _rpm_distros = ('fedora', 'rhel', 'centos', 'suse')
+    _rpm_distros = ('fedora', 'rhel', 'centos', 'opensuse')
 
     def __init__(self, name=None, version=None, codename=None):
         self.name = name
@@ -100,12 +100,10 @@ class OS(object):
         elif name.startswith('fedora'):
             name = 'fedora'
         elif name.startswith('opensuse'):
-            name = 'suse'
-        obj = cls()
-        obj.name = name
-        obj.version = version
-        obj.codename = codename.lower()
-        obj._set_package_type()
+            name = 'opensuse'
+
+        obj = cls(name=name, version=version, codename=codename.lower())
+
         return obj
 
     @classmethod
@@ -131,11 +129,8 @@ class OS(object):
         if name == 'RedHatEnterpriseServer':
             name = 'rhel'
         elif name.startswith('openSUSE'):
-            name = 'suse'
-        obj.name = name.lower()
-
-        obj.version = obj._get_value(str_, 'Release')
-        obj.codename = obj._get_value(str_, 'Codename').lower()
+            name = 'opensuse'
+        name = name.lower()
 
         version = cls._get_value(str_, 'Release')
         codename = cls._get_value(str_, 'Codename').lower()
