@@ -325,7 +325,7 @@ class ProvisionOpenStack(OpenStack):
                              arch,
                              config['openstack'].get('flavor-select-regexp'))
         cmd = ("flock --close --timeout 28800 /tmp/teuthology-server-create.lock" +
-               " openstack --quiet server create" +
+               " openstack server create" +
                " " + config['openstack'].get('server-create', '') +
                " -f json " +
                " --image '" + str(image) + "'" +
@@ -341,7 +341,7 @@ class ProvisionOpenStack(OpenStack):
                " --wait " +
                " " + self.basename)
         try:
-            self.run(cmd, type='compute')
+            misc.sh(cmd)
         except CalledProcessError as exc:
             if "quota exceeded" in exc.output.lower():
                 raise QuotaExceededError(message=exc.output)
