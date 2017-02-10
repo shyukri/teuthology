@@ -40,7 +40,11 @@ def verify_package_version(ctx, config, remote):
     version = builder.version
     pkg_to_check = builder.project
     installed_ver = packaging.get_package_version(remote, pkg_to_check)
-    if installed_ver and version in installed_ver:
+    # use filtered version strings for comparison to avoid errors like
+    # RuntimeError: ceph version 10.2.5-6244-g9027e75 was not installed,
+    # found 10.2.5-6244.g9027e75.
+    if (installed_ver and version.replace('-', '.') in
+                          installed_ver.replace('-', '.')):
         msg = "The correct {pkg} version {ver} is installed.".format(
             ver=version,
             pkg=pkg_to_check
