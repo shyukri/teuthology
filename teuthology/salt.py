@@ -31,8 +31,8 @@ class UseSalt(object):
         return False
 
     def use_salt(self):
-        # if self.openstack() and self.suse():
-        #    return True
+        if self.openstack() and self.suse():
+           return True
         return False
 
 
@@ -207,7 +207,7 @@ class Salt(object):
             'salt-minion.service'])
 
     def __ping(self, ping_cmd, expected):
-        with safe_while(sleep=2, tries=10,
+        with safe_while(sleep=5, tries=10,
                 action=ping_cmd) as proceed:
             while proceed():
                 output = StringIO()
