@@ -72,7 +72,7 @@ class Salt(object):
         minions.
         '''
         for rem in self.remotes.iterkeys():
-            minion_id = rem.shortname
+            minion_id = rem.hostname
             self.minions.append(minion_id)
             log.debug("minion: ID {}".format(minion_id,))
             # mode 777 is necessary to be able to generate keys reliably
@@ -102,7 +102,7 @@ class Salt(object):
         Remove this cluster's minion keys (files and accepted keys)
         '''
         for rem in self.remotes.iterkeys():
-            minion_id = rem.shortname
+            minion_id = rem.hostname
             log.debug("Deleting minion key: ID {}".format(minion_id))
             self.master_remote.run(args = ['sudo', 'salt-key', '-y', '-d',
                 '{}'.format(minion_id)])
@@ -113,10 +113,10 @@ class Salt(object):
     def __preseed_minions(self):
         '''
         Preseed minions with generated and accepted keys, as well as the job_id
-        grain and the minion id (the remotes shortname)
+        grain and the minion id (the remotes hostname)
         '''
         for rem in self.remotes.iterkeys():
-            minion_id = rem.shortname
+            minion_id = rem.hostname
             self.master_remote.run(args = ['sudo', 'cp',
                 'salt/minion-keys/{}.pub'.format(minion_id),
                 '/etc/salt/pki/master/minions/{}'.format(minion_id)])
@@ -163,7 +163,7 @@ class Salt(object):
                     '{}.pub'.format(minion_id),
                     '/etc/salt/pki/minion/minion.pub',
                     run.Raw(';'),
-                    # set minion id to shortname
+                    # set minion id to hostname
                     'sudo',
                     'sh',
                     '-c',
@@ -173,10 +173,10 @@ class Salt(object):
 
     def __set_minion_master(self):
         """Points all minions to the master"""
-        master_shortname = self.master_remote.name.split('@')[1]
+        master_id = self.master_remote.hostname
         for rem in self.remotes.iterkeys():
             sed_cmd = 'echo master: {} > ' \
-                      '/etc/salt/minion.d/master.conf'.format(master_shortname)
+                      '/etc/salt/minion.d/master.conf'.format(master_id)
             rem.run(args=[
                 # remove old master public key if present. Minion will refuse to
                 # start if master name changed but old key is present
