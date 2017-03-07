@@ -550,27 +550,28 @@ def copy_file(from_remote, from_path, to_remote, to_path=None):
     ])
 
 
-def move_file(remote, from_path, to_path, sudo=False):
+def move_file(remote, from_path, to_path, sudo=False, preserve_perms=True):
     """
     Move a file from one path to another on a remote site
 
-    The file needs to be stat'ed first, to make sure we
-    maintain the same permissions
+    If permissions should to be preserved the file to_path must exist since file
+    needs to be stat'ed first, to make sure we maintain the same permissions.
     """
-    args = []
-    if sudo:
-        args.append('sudo')
-    args.extend([
-        'stat',
-        '-c',
-        '\"%a\"',
-        to_path
-    ])
-    proc = remote.run(
-        args=args,
-        stdout=StringIO(),
-    )
-    perms = proc.stdout.getvalue().rstrip().strip('\"')
+    if(preserve_perms):
+        args = []
+        if sudo:
+            args.append('sudo')
+        args.extend([
+            'stat',
+            '-c',
+            '\"%a\"',
+            to_path
+        ])
+        proc = remote.run(
+            args=args,
+            stdout=StringIO(),
+        )
+        perms = proc.stdout.getvalue().rstrip().strip('\"')
 
     args = []
     if sudo:
@@ -586,22 +587,23 @@ def move_file(remote, from_path, to_path, sudo=False):
         stdout=StringIO(),
     )
 
-    # reset the file back to the original permissions
-    args = []
-    if sudo:
-        args.append('sudo')
-    args.extend([
-        'chmod',
-        perms,
-        to_path,
-    ])
-    proc = remote.run(
-        args=args,
-        stdout=StringIO(),
-    )
+    if(preserve_perms):
+        # reset the file back to the original permissions
+        args = []
+        if sudo:
+            args.append('sudo')
+        args.extend([
+            'chmod',
+            perms,
+            to_path,
+        ])
+        proc = remote.run(
+            args=args,
+            stdout=StringIO(),
+        )
 
 
-def delete_file(remote, path, sudo=False, force=False):
+def delete_file(remote, path, sudo=False, force=False, check=True):
     """
     rm a file on a remote site.
     """
@@ -618,6 +620,7 @@ def delete_file(remote, path, sudo=False, force=False):
     remote.run(
         args=args,
         stdout=StringIO(),
+        check_status = check
     )
 
 

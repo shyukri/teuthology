@@ -455,6 +455,7 @@ class OpenStack(object):
                 if resource in hint:
                     new = hint[resource]
                     current = result[resource]
+                    log.debug("hint is {}".format(hint))
                     for key, value in hint[resource].iteritems():
                         current[key] = max(current[key], new[key])
         return result
