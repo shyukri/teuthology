@@ -5,7 +5,7 @@ from cStringIO import StringIO
 from netifaces import ifaddresses
 
 from .contextutil import safe_while
-from .misc import delete_file, move_file, sh, sudo_write_file, write_file
+from .misc import delete_file, move_file, sh, sudo_write_file
 from .orchestra.remote import Remote
 from .orchestra import run
 
@@ -61,23 +61,23 @@ class Salt(object):
                 'sudo',
                 'sh',
                 '-c',
-                ('if [ ! -d salt ]; then'
+                ('if [ ! -d salt ]; then '
                  'mkdir -m 777 salt; fi')
             ])
             self.master_remote.run(args=[
                 'sudo',
                 'sh',
                 '-c',
-                ('if [ ! -d salt/minion-keys ]; then'
+                ('if [ ! -d salt/minion-keys ]; then '
                  'mkdir -m 777 salt/minion-keys; fi')
             ])
             self.master_remote.run(args=[
                 'sudo',
                 'sh',
                 '-c',
-                ('if [ ! -f salt/minion-keys/{mid}.pem ]; then'
-                 'salt-key --gen-keys={mid}'
-                 '--gen-keys-dir=salt/minion-keys/;'
+                ('if [ ! -f salt/minion-keys/{mid}.pem ]; then '
+                 'salt-key --gen-keys={mid}; '
+                 '--gen-keys-dir=salt/minion-keys/; '
                  ' fi').format(mid=minion_id)
             ])
 
