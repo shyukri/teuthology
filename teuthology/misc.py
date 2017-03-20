@@ -554,8 +554,11 @@ def move_file(remote, from_path, to_path, sudo=False, preserve_perms=True):
     """
     Move a file from one path to another on a remote site
 
-    If permissions should to be preserved the file to_path must exist since file
-    needs to be stat'ed first, to make sure we maintain the same permissions.
+    If preserve_perms is true, the contents of the destination file (to_path,
+    which must already exist in this case) are replaced with the contents of the
+    source file (from_path) and the permissions of to_path are preserved. If
+    preserve_perms is false, to_path does not need to exist, and is simply
+    clobbered if it does.
     """
     if(preserve_perms):
         args = []
