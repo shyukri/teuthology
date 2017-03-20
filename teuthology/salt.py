@@ -76,7 +76,7 @@ class Salt(object):
                 'sh',
                 '-c',
                 ('if [ ! -f salt/minion-keys/{mid}.pem ]; then '
-                 'salt-key --gen-keys={mid}; '
+                 'salt-key --gen-keys={mid} '
                  '--gen-keys-dir=salt/minion-keys/; '
                  ' fi').format(mid=minion_id)
             ])
