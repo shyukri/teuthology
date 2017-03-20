@@ -1,3 +1,9 @@
+from gevent import monkey
+monkey.patch_all(
+    dns=False,
+    # Don't patch subprocess to avoid http://tracker.ceph.com/issues/14990
+    subprocess=False,
+)
 import os
 # Tell gevent not to patch os.waitpid() since it is susceptible to race
 # conditions. See:
@@ -11,12 +17,6 @@ manhole.install(
     verbose=False,
     # Listen for SIGUSR1
     oneshot_on="USR1"
-)
-from gevent import monkey
-monkey.patch_all(
-    dns=False,
-    # Don't patch subprocess to avoid http://tracker.ceph.com/issues/14990
-    subprocess=False,
 )
 import sys
 

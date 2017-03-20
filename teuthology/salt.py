@@ -61,15 +61,13 @@ class Salt(object):
                 'sudo',
                 'sh',
                 '-c',
-                ('if [ ! -d salt ]; then '
-                 'mkdir -m 777 salt; fi')
+                'test -d salt || mkdir -m 777 salt',
             ])
             self.master_remote.run(args=[
                 'sudo',
                 'sh',
                 '-c',
-                ('if [ ! -d salt/minion-keys ]; then '
-                 'mkdir -m 777 salt/minion-keys; fi')
+                'test -d salt/minion-keys || mkdir -m 777 salt/minion-keys',
             ])
             self.master_remote.run(args=[
                 'sudo',
@@ -78,7 +76,7 @@ class Salt(object):
                 ('if [ ! -f salt/minion-keys/{mid}.pem ]; then '
                  'salt-key --gen-keys={mid} '
                  '--gen-keys-dir=salt/minion-keys/; '
-                 ' fi').format(mid=minion_id)
+                 ' fi').format(mid=minion_id),
             ])
 
     def __cleanup_keys(self):
@@ -94,8 +92,8 @@ class Salt(object):
                 'sudo',
                 'rm',
                 'salt/minion-keys/{}.pem'.format(minion_id),
-                'salt/minion-keys/{}.pub'.format(minion_id)]
-            )
+                'salt/minion-keys/{}.pub'.format(minion_id),
+            ])
 
     def __preseed_minions(self):
         '''
@@ -112,21 +110,20 @@ class Salt(object):
                 'sudo',
                 'cp',
                 'salt/minion-keys/{}.pub'.format(minion_id),
-                '/etc/salt/pki/master/minions/{}'.format(minion_id)
+                '/etc/salt/pki/master/minions/{}'.format(minion_id),
             ])
             self.master_remote.run(args=[
                 'sudo',
                 'chown',
                 'ubuntu',
                 'salt/minion-keys/{}.pem'.format(minion_id),
-                'salt/minion-keys/{}.pub'.format(minion_id)
+                'salt/minion-keys/{}.pub'.format(minion_id),
             ])
             # copy the keys via the teuthology VM. The worker VMs can't ssh to
             # each other. scp -3 does a 3-point copy through the teuhology VM.
             sh('scp -3 {}:salt/minion-keys/{}.* {}:'.format(
                 self.master_remote.name,
-                minion_id, rem.name)
-            )
+                minion_id, rem.name))
             sudo_write_file(rem, grains_path, grains)
             sudo_write_file(rem, '/etc/salt/minion_id', minion_id)
 
