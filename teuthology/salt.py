@@ -8,6 +8,7 @@ from .contextutil import safe_while
 from .misc import delete_file, move_file, sh, sudo_write_file
 from .orchestra.remote import Remote
 from .orchestra import run
+from .task.install.util import ship_utilities
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class Salt(object):
         # for worker deployment and the teuthology machine is the master.
         if not config:
             self.master_remote = Remote(teuthology_remote_name)
+            self._install()
         else:
             self.master_remote = Remote(config.get('master_remote',
                                         teuthology_remote_name))
@@ -214,3 +216,6 @@ class Salt(object):
         self.__ping([
             'sudo', 'salt', '-C', 'G@job_id:{}'.format(self.job_id),
             'test.ping'], len(self.remotes))
+
+    def _install(self):
+        ship_utilities(self.ctx, self.ctx.config)
