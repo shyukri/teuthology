@@ -128,7 +128,7 @@ def syslog(ctx, config):
                     run.Raw('|'),
                     'grep', '-v', 'ceph-create-keys: INFO',
                     run.Raw('|'),
-                    'grep', '-v', '\\bsalt-master\\b|\\bsalt-minion\\b',
+                    'egrep', '-v', '\\bsalt-master\\b|\\bsalt-minion\\b',
                     run.Raw('|'),
                     'head', '-n', '1',
                 ],
