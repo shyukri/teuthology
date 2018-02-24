@@ -141,11 +141,21 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
             args=[
                 'sudo', 'zypper', 'clean', '-a',
             ])
+        remote.run(args='sudo zypper repos -u')
     else:
         remote.run(
             args=[
                 'sudo', 'yum', 'clean', 'all',
             ])
+
+    # if Salt is being used to deploy the test cluster, assume that
+    # packages will be installed by DeepSea and/or the test itself
+    if 'ceph_cm' in ctx.config:
+        ceph_cm = ctx.config.get('ceph_cm')
+        log.info("Found ceph_cm in ctx.config with value {}".format(ceph_cm))
+        if ceph_cm == 'salt':
+            log.info("Skipping package installation (salt)")
+            return True
 
     ldir = _get_local_dir(config, remote)
 

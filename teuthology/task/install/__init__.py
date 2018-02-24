@@ -36,8 +36,14 @@ def verify_package_version(ctx, config, remote):
     if config.get("extras"):
         log.info("Skipping version verification...")
         return True
+    if 'ceph_cm' in ctx.config:
+        ceph_cm = ctx.config.get('ceph_cm')
+        log.info("Found ceph_cm in ctx.config with value {}".format(ceph_cm))
+        if ceph_cm == 'salt':
+            log.info("Skipping version verification (salt)")
+            return True
     if 'repos' in config and config.get('repos'):
-        log.info("Skipping version verification because we have custom repos...")
+        log.info("Skipping version verification (custom repos)")
         return True
     builder = _get_builder_project(ctx, remote, config)
     version = builder.version
