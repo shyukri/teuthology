@@ -368,27 +368,18 @@ function get_or_create_keypair() {
 
     (
         cd $HOME/.ssh
-        if ! test -f $keypair.pem ; then
-            openstack keypair delete $keypair || true
-            openstack keypair create $keypair > $keypair.pem || return 1
-            chmod 600 $keypair.pem
+        rm -f $keypair.*
+        openstack keypair delete $keypair || true
+        #ssh-keygen -b 4096 -N "$(pwgen 16 1)" -f $keypair || return 1
+        ssh-keygen -b 4096 -N "" -f $keypair || return 1
+        openstack keypair create --public-key $keypair.pub $keypair || return 1
+        openstack keypair show $keypair > $keypair.keypair || return 1
+        fingerprint=$(ssh-keygen -l -f $keypair.pub | cut -d' ' -f2)
+        if ! grep --quiet $fingerprint $keypair.keypair ; then
+            echo "Keypair fingerprints do not match!"
+            return 1
         fi
-        if ! test -f $keypair.pub ; then
-            if ! ssh-keygen -y -f $keypair.pem > $keypair.pub ; then
-               cat $keypair.pub
-               return 1
-            fi
-        fi
-        if ! openstack keypair show $keypair > $keypair.keypair 2>&1 ; then
-            openstack keypair create --public-key $keypair.pub $keypair || return 1 # noqa
-        else
-            fingerprint=$(ssh-keygen -l -f $keypair.pub | cut -d' ' -f2)
-            if ! grep --quiet $fingerprint $keypair.keypair ; then
-                openstack keypair delete $keypair || return 1
-                openstack keypair create --public-key $keypair.pub $keypair || return 1 # noqa
-            fi
-        fi
-        ln -f $keypair.pem id_rsa
+        ln -f $keypair id_rsa
         cat $keypair.pub >> authorized_keys
     )
 }
