@@ -367,6 +367,7 @@ function get_or_create_keypair() {
     local keypair=$1
 
     (
+        echo "Entering get_or_create_keypair()"
         cd $HOME/.ssh
         rm -f $keypair.*
         openstack keypair delete $keypair || true
