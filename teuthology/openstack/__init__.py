@@ -604,7 +604,7 @@ class OpenStack(object):
                     output = channel.makefile('r', 1)
                     channel.exec_command(tail)
                     for line in iter(output.readline, b''):
-                        log.info(line.strip())
+                        log.debug("> " + line.strip())
                         if self.up_string in line:
                             success = True
                             break
@@ -873,7 +873,12 @@ ssh access           : ssh {identity}{username}@{ip} # logs in /usr/share/nginx/
         if not self.instance.exists():
             if self.get_provider() != 'rackspace':
                 self.create_security_group()
-            self.create_cluster()
+            if self.create_cluster():
+                log.info("Teuthology cluster created successfully")
+                if not self.args.suite:
+                    self.reminders()
+            else:
+                log.error("Teuthology cluster creation failed")
 
     def setup_logs(self):
         """
