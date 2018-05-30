@@ -43,6 +43,7 @@ class Salt(object):
                 self.master_is_teuthology = False
                 self.master_remote = Remote(config.get('master_remote'))
 
+        self.__install_salt()
         if self.master_is_teuthology:
             log.info('Provisioning minions with lock...')
             self.__provision_minions_with_lock()
@@ -227,6 +228,11 @@ class Salt(object):
         self.__set_minion_master()
         self.__set_debug_log_level()
         self.__start_master()
+
+    def __install_salt(self):
+        """Install or update newest version of salt"""
+        self.cluster.run(args='''
+            sudo zypper install -y salt-minion salt-master salt-api''')
 
     def __stop_minions(self):
         """Stops salt-minion.service on all target VMs"""

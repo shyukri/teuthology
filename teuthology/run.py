@@ -247,9 +247,10 @@ def get_initial_tasks(lock, config, machine_type):
         if os_type == 'centos':
             init_tasks.append({'selinux': None})
         if 'ceph_cm' in config and config.get('ceph_cm') == 'salt':
-            init_tasks.append({'ceph_cm_salt': None})
+            pass
         else:
             init_tasks.append({'ansible.cephlab': None})
+
         # upstream changed this to "clock" in f5d9712 but in openstack
         # we have the ability to sync clocks in the user-data script,
         # so we are keeping "clock.check" for now
