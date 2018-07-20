@@ -138,8 +138,17 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
         builder.install_repo()
 
     if not install_packages:
-        log.info("install_packages set to False: installing ceph-test package only")
+        log.info("install_packages set to False: not installing Ceph packages")
         rpm = ["ceph-test"]
+
+    # rpm does not force installation of a particular version of the project
+    # packages, so we can put extra_system_packages together with the rest
+    system_pkglist = config.get('extra_system_packages', [])
+    if system_pkglist:
+        if isinstance(system_pkglist, dict):
+            rpm += system_pkglist.get('rpm')
+        else:
+            rpm += system_pkglist
 
     log.info("Installing packages: {pkglist} on remote rpm {arch}".format(
         pkglist=", ".join(rpm), arch=remote.arch))
