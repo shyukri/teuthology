@@ -220,13 +220,17 @@ def install(ctx, config):
 
     package_list = get_package_list(ctx, config)
     debs = package_list['deb']
-    rpm = package_list['rpm']
+    rpms = package_list['rpm']
 
     # pull any additional packages out of config
-    extra_pkgs = config.get('extra_packages')
+    extra_pkgs = config.get('extra_packages', [])
     log.info('extra packages: {packages}'.format(packages=extra_pkgs))
-    debs += extra_pkgs
-    rpm += extra_pkgs
+    if isinstance(extra_pkgs, dict):
+        debs += extra_pkgs.get('deb', [])
+        rpms += extra_pkgs.get('rpm', [])
+    else:
+        debs += extra_pkgs
+        rpms += extra_pkgs
 
     # When extras is in the config we want to purposely not install ceph.
     # This is typically used on jobs that use ceph-deploy to install ceph
@@ -238,8 +242,8 @@ def install(ctx, config):
         debs = ['ceph-test', 'ceph-fuse',
                 'librados2', 'librbd1',
                 'python-ceph']
-        rpm = ['ceph-fuse', 'librbd1', 'librados2', 'ceph-test', 'python-ceph']
-    package_list = dict(deb=debs, rpm=rpm)
+        rpms = ['ceph-fuse', 'librbd1', 'librados2', 'ceph-test', 'python-ceph']
+    package_list = dict(deb=debs, rpm=rpms)
     install_packages(ctx, package_list, config)
     try:
         yield
@@ -340,7 +344,6 @@ def upgrade_common(ctx, config, deploy_style):
     remotes = upgrade_remote_to_config(ctx, config)
     project = config.get('project', 'ceph')
 
-    # FIXME: extra_pkgs is not distro-agnostic
     extra_pkgs = config.get('extra_packages', [])
     log.info('extra packages: {packages}'.format(packages=extra_pkgs))
 
@@ -351,8 +354,10 @@ def upgrade_common(ctx, config, deploy_style):
         pkgs = get_package_list(ctx, config)[system_type]
         log.info("Upgrading {proj} {system_type} packages: {pkgs}".format(
             proj=project, system_type=system_type, pkgs=', '.join(pkgs)))
-        # FIXME: again, make extra_pkgs distro-agnostic
-        pkgs += extra_pkgs
+        if isinstance(extra_pkgs, dict):
+            pkgs += extra_pkgs.get(system_type, [])
+        else:
+            pkgs += extra_pkgs
 
         deploy_style(ctx, node, remote, pkgs, system_type)
         verify_package_version(ctx, node, remote)
@@ -437,6 +442,10 @@ def task(ctx, config):
         project: samba
         branch: foo
         extra_packages: ['samba']
+    - install:
+        extra_packages:
+           deb: ['librados-dev', 'libradosstriper-dev']
+           rpm: ['librados-devel', 'libradosstriper-devel']
     - install:
         rhbuild: 1.3.0
         playbook: downstream_setup.yml
