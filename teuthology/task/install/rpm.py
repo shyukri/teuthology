@@ -137,12 +137,12 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
         log.info('Package version is %s', builder.version)
         builder.install_repo()
 
-    if install_packages:
-        log.info("Installing packages: {pkglist} on remote rpm {arch}".format(
-            pkglist=", ".join(rpm), arch=remote.arch))
-    else:
-        log.info("install_packages set to False: not actually installing packages")
-        return True
+    if not install_packages:
+        log.info("install_packages set to False: installing ceph-test package only")
+        rpm = ["ceph-test"]
+
+    log.info("Installing packages: {pkglist} on remote rpm {arch}".format(
+        pkglist=", ".join(rpm), arch=remote.arch))
 
     if dist_release not in ['opensuse', 'sle']:
         project = builder.project
