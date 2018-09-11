@@ -177,6 +177,11 @@ def get_suite_parser():
         '--suite-repo',
         help=("Use tasks and suite definition in this repository"),
     )
+    parser.add_argument(
+        '--sleep',
+        help='Number of seconds to sleep before tearing down the target VMs',
+        default=0
+    )
     return parser
 
 def get_openstack_parser():

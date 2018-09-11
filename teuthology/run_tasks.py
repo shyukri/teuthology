@@ -67,6 +67,9 @@ def run_one_task(taskname, **kwargs):
 
 def run_tasks(tasks, ctx):
     archive_path = ctx.config.get('archive_path')
+    sleep_seconds = ctx.config.get('sleep')
+    sleep_task = { "sleep": { "duration": sleep_seconds } }
+    log.debug("Sleep set to {} seconds".format(sleep_seconds))
     if archive_path:
         timer = Timer(
             path=os.path.join(archive_path, 'timing.yaml'),
@@ -83,6 +86,13 @@ def run_tasks(tasks, ctx):
                 raise RuntimeError('Invalid task definition: %s' % taskdict)
             log.info('Running task %s...', taskname)
             timer.mark('%s enter' % taskname)
+            manager = run_one_task(taskname, ctx=ctx, config=config)
+            if hasattr(manager, '__enter__'):
+                stack.append((taskname, manager))
+                manager.__enter__()
+        # --sleep success case
+        if sleep_seconds:
+            ((taskname, config),) = sleep_task.iteritems()
             manager = run_one_task(taskname, ctx=ctx, config=config)
             if hasattr(manager, '__enter__'):
                 stack.append((taskname, manager))
@@ -150,6 +160,13 @@ def run_tasks(tasks, ctx):
                 ctx.summary['failure_info'] = emsg
     finally:
         try:
+            # sleep failure case
+            if sleep_seconds:
+                ((taskname, config),) = sleep_task.iteritems()
+                manager = run_one_task(taskname, ctx=ctx, config=config)
+                if hasattr(manager, '__enter__'):
+                    stack.append((taskname, manager))
+                    manager.__enter__()
             exc_info = sys.exc_info()
             while stack:
                 taskname, manager = stack.pop()

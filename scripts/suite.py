@@ -71,6 +71,9 @@ Standard arguments:
                               <suite_branch> to be ignored for scheduling
                               purposes, but it will still be used for test
                               running.
+  --sleep <seconds>           Number of seconds to sleep before tearing down
+                              the cluster.
+                              [default: 0]
 
 Scheduler arguments:
   --owner <owner>             Job owner
