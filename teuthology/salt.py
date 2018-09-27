@@ -239,7 +239,7 @@ class Salt(object):
             'sudo', 'systemctl', 'restart', 'salt-minion.service'])
 
     def __ping(self, ping_cmd, expected):
-        with safe_while(sleep=5, tries=10,
+        with safe_while(sleep=15, tries=20,
                         action=ping_cmd) as proceed:
             while proceed():
                 output = StringIO()
