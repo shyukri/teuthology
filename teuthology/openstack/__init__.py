@@ -682,7 +682,13 @@ class TeuthologyOpenStack(OpenStack):
         self.setup_logs()
         set_config_attr(self.args)
         log.debug('Teuthology config: %s' % self.config.openstack)
-        self.key_filename = self.args.key_filename
+        for keyfile in [self.args.key_filename,
+                        os.environ['HOME'] + '/.ssh/id_rsa',
+                        os.environ['HOME'] + '/.ssh/id_dsa',
+                        os.environ['HOME'] + '/.ssh/id_ecdsa']:
+            if (keyfile and os.path.isfile(keyfile)):
+                self.key_filename = keyfile
+                break
         if not self.key_filename:
             raise Exception('No key file provided, please, use --key-filename option')
         self.verify_openstack()
