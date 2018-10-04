@@ -50,8 +50,8 @@ setup(
     ],
     install_requires=['setuptools',
                       'gevent',
-                      # For teuthology-coverage
-                      'MySQL-python == 1.2.3',
+                      ## For teuthology-coverage
+                      #'MySQL-python == 1.2.3',
                       'PyYAML',
                       'argparse >= 1.2.1',
                       'beanstalkc >= 0.2.0',
