@@ -280,7 +280,7 @@ class OpenStack(object):
             if self.cache_token():
                 os.environ['OS_TOKEN'] = os.environ['OS_TOKEN_VALUE']
                 os.environ['OS_URL'] = url
-        if re.match('(server|flavor|floating|security|network|image|volume|keypair)', cmd):
+        if re.match('(server|flavor|ip|security|network|image|volume|keypair)', cmd):
             cmd = "openstack --quiet " + cmd
         try:
             status = misc.sh(cmd)
@@ -1153,7 +1153,7 @@ openstack security group rule create --protocol udp --src-group {server} --dst-p
     @staticmethod
     def create_floating_ip():
         try:
-            pools = json.loads(OpenStack().run("floating ip pool list -f json"))
+            pools = json.loads(OpenStack().run("ip floating pool list -f json"))
         except subprocess.CalledProcessError as e:
             if 'Floating ip pool operations are only available for Compute v2 network.' \
                     in e.output:
@@ -1166,14 +1166,14 @@ openstack security group rule create --protocol udp --src-group {server} --dst-p
                 except subprocess.CalledProcessError:
                     log.debug("Can't create floating ip for network '%s'" % network)
 
-            log.debug("create_floating_ip: floating ip pool list failed")
+            log.debug("create_floating_ip: ip floating pool list failed")
             return None
         if not pools:
             return None
         pool = pools[0]['Name']
         try:
             ip = json.loads(OpenStack().run(
-                "floating ip create -f json '" + pool + "'"))
+                "ip floating create -f json '" + pool + "'"))
             return ip['ip']
         except subprocess.CalledProcessError:
             log.debug("create_floating_ip: not creating a floating ip")
@@ -1189,12 +1189,12 @@ openstack security group rule create --protocol udp --src-group {server} --dst-p
         if not ip:
             ip = TeuthologyOpenStack.create_floating_ip()
         if ip:
-            OpenStack().run("floating ip add " + ip + " " + name_or_id)
+            OpenStack().run("ip floating add " + ip + " " + name_or_id)
 
     @staticmethod
     def get_os_floating_ips():
         try:
-            ips = json.loads(OpenStack().run("floating ip list -f json"))
+            ips = json.loads(OpenStack().run("ip floating list -f json"))
         except subprocess.CalledProcessError as e:
             log.warning(e)
             if e.returncode == 1:
@@ -1233,9 +1233,9 @@ openstack security group rule create --protocol udp --src-group {server} --dst-p
         ip = OpenStackInstance(instance_id).get_floating_ip()
         if not ip:
             return
-        OpenStack().run("floating ip remove " + ip + " " + instance_id)
+        OpenStack().run("ip floating remove " + ip + " " + instance_id)
         ip_id = TeuthologyOpenStack.get_floating_ip_id(ip)
-        OpenStack().run("floating ip delete " + ip_id)
+        OpenStack().run("ip floating delete " + ip_id)
 
     def create_cluster(self):
         user_data = self.get_user_data()
