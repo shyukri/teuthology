@@ -139,7 +139,11 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
 
     if not install_packages:
         log.info("install_packages set to False: not installing Ceph packages")
-        rpm = ["ceph-test"]
+        # Although "librados2" is an indirect dependency of ceph-test, we
+        # install it separately because, otherwise, ceph-test cannot be
+        # installed (even with --force) when there are several conflicting
+        # repos from different vendors.
+        rpm = ["librados2", "ceph-test"]
 
     # rpm does not force installation of a particular version of the project
     # packages, so we can put extra_system_packages together with the rest
@@ -176,7 +180,9 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
     if dist_release in ['opensuse', 'sle']:
         pkg_mng_cmd = 'zypper'
         pkg_mng_opts = ['--non-interactive', '--no-gpg-checks']
-        pkg_mng_install_opts = ['--capability', '--no-recommends']
+        # NOTE: --capability contradicts --force
+        #pkg_mng_install_opts = ['--capability', '--no-recommends']
+        pkg_mng_install_opts = ['--force', '--no-recommends']
         pkg_mng_remove_opts = '--capability'
     else:
         pkg_mng_cmd = 'yum'
