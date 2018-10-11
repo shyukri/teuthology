@@ -9,6 +9,13 @@ from teuthology.orchestra import run
 log = logging.getLogger(__name__)
 
 
+def _flat2gen(alist):
+    for item in alist:
+        if isinstance(item, list):
+            for subitem in item: yield subitem
+        else:
+            yield item
+
 def _get_builder_project(ctx, remote, config):
     return packaging.get_builder_project()(
         config.get('project', 'ceph'),
