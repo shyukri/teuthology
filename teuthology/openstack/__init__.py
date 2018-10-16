@@ -696,7 +696,8 @@ class TeuthologyOpenStack(OpenStack):
             self.instance = OpenStackInstance(self.server_name())
             self.teardown()
             return 0
-        self.setup()
+        if self.args.setup:
+            self.setup()
         exit_code = 0
         if self.args.suite:
             if self.args.wait:
@@ -794,6 +795,7 @@ class TeuthologyOpenStack(OpenStack):
                                     '--test-repo'):
                 del original_argv[0:2]
             elif original_argv[0] in ('--teardown',
+                                      '--setup',
                                       '--upload',
                                       '--no-canonical-tags'):
                 del original_argv[0]
