@@ -73,16 +73,6 @@ dict_templ = {
             'log-whitelist': ['slow request'],
             'sha1': Placeholder('ceph_hash'),
         },
-        'ceph-deploy': {
-            'conf': {
-                'client': {
-                    'log file': '/var/log/ceph/ceph-$name.$pid.log'
-                },
-                'mon': {
-                    'osd default pool size': 2
-                }
-            }
-        },
         'install': {
             'ceph': {
                 'sha1': Placeholder('ceph_hash'),
