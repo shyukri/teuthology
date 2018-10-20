@@ -252,8 +252,10 @@ def install(ctx, config):
     finally:
         remove_packages(ctx, config, package_list)
         remove_sources(ctx, config)
-        if project == 'ceph':
-            purge_data(ctx)
+        # Not needed when the VM is going to be destroyed
+        # or the machine reimaged
+        #if project == 'ceph':
+        #    purge_data(ctx)
 
 
 def upgrade_old_style(ctx, node, remote, pkgs, system_type):
