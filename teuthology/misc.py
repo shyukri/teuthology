@@ -914,26 +914,29 @@ def wait_until_osds_up(ctx, cluster, remote, ceph_cluster='ceph'):
     """Wait until all Ceph OSDs are booted."""
     num_osds = num_instances_of_type(cluster, 'osd', ceph_cluster)
     testdir = get_testdir(ctx)
-    while True:
-        r = remote.run(
-            args=[
-                'adjust-ulimits',
-                'ceph-coverage',
-                '{tdir}/archive/coverage'.format(tdir=testdir),
-                'ceph',
-                '--cluster', ceph_cluster,
-                'osd', 'dump', '--format=json'
-            ],
-            stdout=StringIO(),
-            logger=log.getChild('health'),
-        )
-        out = r.stdout.getvalue()
-        j = json.loads('\n'.join(out.split('\n')[1:]))
-        up = len(filter(lambda o: 'up' in o['state'], j['osds']))
-        log.debug('%d of %d OSDs are up' % (up, num_osds))
-        if up == num_osds:
-            break
-        time.sleep(1)
+    with safe_while(sleep=6, tries=50) as proceed:
+        while proceed():
+            daemons = ctx.daemons.iter_daemons_of_role('osd', ceph_cluster)
+            for daemon in daemons:
+                daemon.check_status()
+            r = remote.run(
+                args=[
+                    'adjust-ulimits',
+                    'ceph-coverage',
+                    '{tdir}/archive/coverage'.format(tdir=testdir),
+                    'ceph',
+                    '--cluster', ceph_cluster,
+                    'osd', 'dump', '--format=json'
+                ],
+                stdout=StringIO(),
+                logger=log.getChild('health'),
+            )
+            out = r.stdout.getvalue()
+            j = json.loads('\n'.join(out.split('\n')[1:]))
+            up = len(filter(lambda o: 'up' in o['state'], j['osds']))
+            log.debug('%d of %d OSDs are up' % (up, num_osds))
+            if up == num_osds:
+                break
 
 
 def reboot(node, timeout=300, interval=30):

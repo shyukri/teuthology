@@ -133,9 +133,25 @@ fi
 # Upgrade pip first
 ./virtualenv/bin/pip install --upgrade pip
 
+# Ensure setuptools is installed
 ./virtualenv/bin/pip install setuptools --upgrade
 
+# Install all requirements
 ./virtualenv/bin/pip install --upgrade -r requirements.txt
+
+# FIXME
+# Don't use pip-tools for automatic dependency resolution
+# until we fix teuthology code to use modern openstack.
+# Enabling pip-sync breaks the dependencies while deploying
+# teuthology cluster via bootstrap, to satisfy which we need
+# to create requirements from setup.py with:
+#   pip-compile --output-file requirements.txt setup.py
+#
+# # Invoke pip-sync
+# ./virtualenv/bin/pip-sync requirements.txt
+#
+# # Check to make sure requirements are met
+# ./virtualenv/bin/pip check
 
 # Remove leftover .pyc files
 find teuthology -name '*.pyc' -exec rm {} \;
