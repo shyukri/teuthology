@@ -313,18 +313,18 @@ def _remove_sources_list(ctx, config, remote):
     builder = _get_builder_project(ctx, remote, config)
     builder.remove_repo()
     proj = builder.project
-    # FIXME
-    # There probably should be a way of removing these files that is
-    # implemented in the yum/rpm remove procedures for the ceph package.
-    # FIXME but why is this function doing these things?
-    remote.run(
-        args=['sudo', 'rm', '-r', '/var/lib/{proj}'.format(proj=proj)],
-        check_status=False,
-    )
-    remote.run(
-        args=['sudo', 'rm', '-r', '/var/log/{proj}'.format(proj=proj)],
-        check_status=False,
-    )
+    ## FIXME
+    ## There probably should be a way of removing these files that is
+    ## implemented in the yum/rpm remove procedures for the ceph package.
+    ## FIXME but why is this function doing these things?
+    #remote.run(
+    #    args=['sudo', 'rm', '-r', '/var/lib/{proj}'.format(proj=proj)],
+    #    check_status=False,
+    #)
+    #remote.run(
+    #    args=['sudo', 'rm', '-r', '/var/log/{proj}'.format(proj=proj)],
+    #    check_status=False,
+    #)
     if remote.os.name not in ['opensuse', 'sle']:
         _yum_unset_check_obsoletes(remote)
 
