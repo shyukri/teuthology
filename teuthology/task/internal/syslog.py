@@ -130,6 +130,8 @@ def syslog(ctx, config):
                     run.Raw('|'),
                     'egrep', '-v', '\\bsalt-master\\b|\\bsalt-minion\\b|\\bsalt-api\\b',
                     run.Raw('|'),
+                    'grep', '-v', 'ceph-crash',
+                    run.Raw('|'),
                     'head', '-n', '1',
                 ],
                 stdout=StringIO(),
