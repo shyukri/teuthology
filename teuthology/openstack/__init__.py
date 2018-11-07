@@ -1308,7 +1308,11 @@ openstack security group rule create --protocol udp --src-group {server} --dst-p
         instance_id = self.get_instance_id()
 
         if instance_id:
-            self.ssh("sudo /etc/init.d/teuthology stop || true")
+            try:
+                self.ssh("sudo /etc/init.d/teuthology stop || true")
+            except socket.error as e:
+                log.debug('teardown ssh connect socket.error ' + str(e))
+                continue
             self.delete_floating_ip(instance_id)
         self.run("server delete %s || true" % self.packages_repository())
         self.run("server delete --wait %s || true" % self.server_name())
