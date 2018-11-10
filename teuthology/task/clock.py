@@ -45,6 +45,8 @@ def task(ctx, config):
                 run.Raw(';'),
                 'PATH=/usr/bin:/usr/sbin', 'ntpq', '-p', run.Raw('||'),
                 'PATH=/usr/bin:/usr/sbin', 'chronyc', 'sources',
+                run.Raw('||'),
+                'true'
             ],
         )
 
@@ -58,6 +60,8 @@ def task(ctx, config):
                 args=[
                     'PATH=/usr/bin:/usr/sbin', 'ntpq', '-p', run.Raw('||'),
                     'PATH=/usr/bin:/usr/sbin', 'chronyc', 'sources',
+                    run.Raw('||'),
+                    'true'
                     ],
                 )
 
@@ -76,6 +80,8 @@ def check(ctx, config):
             args=[
                 'PATH=/usr/bin:/usr/sbin', 'ntpq', '-p', run.Raw('||'),
                 'PATH=/usr/bin:/usr/sbin', 'chronyc', 'sources',
+                run.Raw('||'),
+                'true'
                 ],
             )
 
@@ -89,5 +95,7 @@ def check(ctx, config):
                 args=[
                     'PATH=/usr/bin:/usr/sbin', 'ntpq', '-p', run.Raw('||'),
                     'PATH=/usr/bin:/usr/sbin', 'chronyc', 'sources',
+                    run.Raw('||'),
+                    'true'
                     ],
                 )
