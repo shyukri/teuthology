@@ -184,24 +184,30 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
         remove_cmd = 'sudo yum -y remove'
         install_cmd = 'sudo yum -y install'
 
-    for cpack in rpm:
-        if ldir:
-            remote.run(args='''
-              if test -e {pkg} ; then
-                {remove_cmd} {pkg} ;
-                {install_cmd} {pkg} ;
-              else
-                {install_cmd} {cpack} ;
-              fi
-            '''.format(remove_cmd=remove_cmd,
-                       install_cmd=install_cmd,
-                       pkg=os.path.join(ldir, cpack),
-                       cpack=cpack))
-        else:
-            remote.run(
-                args='{install_cmd} {cpack}'
-                     .format(install_cmd=install_cmd, cpack=cpack)
-                )
+    if system_pkglist:
+        remote.run(
+            args='{install_cmd} {rpms}'
+                 .format(install_cmd=install_cmd, rpms=' '.join(rpm))
+            )
+    else:
+        for cpack in rpm:
+            if ldir:
+                remote.run(args='''
+                  if test -e {pkg} ; then
+                    {remove_cmd} {pkg} ;
+                    {install_cmd} {pkg} ;
+                  else
+                    {install_cmd} {cpack} ;
+                  fi
+                '''.format(remove_cmd=remove_cmd,
+                           install_cmd=install_cmd,
+                           pkg=os.path.join(ldir, cpack),
+                           cpack=cpack))
+            else:
+                remote.run(
+                    args='{install_cmd} {cpack}'
+                         .format(install_cmd=install_cmd, cpack=cpack)
+                    )
 
 def _yum_fix_repo_priority(remote, project, uri):
     """
