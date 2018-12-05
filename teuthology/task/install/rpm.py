@@ -130,6 +130,7 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
     log.debug("_update_package_list_and_install: config is {}".format(config))
     repos = config.get('repos')
     install_ceph_packages = config.get('install_ceph_packages')
+    repos_only = config.get('repos_only')
 
     if repos:
         log.debug("Adding repos: %s" % repos)
@@ -143,6 +144,10 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
         log.info('Pulling from %s', builder.base_url)
         log.info('Package version is %s', builder.version)
         builder.install_repo()
+
+    if repos_only:
+        log.info("repos_only was specified: not installing any packages")
+        return None
 
     if not install_ceph_packages:
         log.info("install_ceph_packages set to False: not installing Ceph packages")
