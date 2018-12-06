@@ -595,6 +595,7 @@ def task(ctx, config):
                 project=project,
                 packages=config.get('packages', dict()),
                 install_ceph_packages=config.get('install_ceph_packages', True),
+                repos_only=config.get('repos_only', False),
         )
         if repos:
             nested_config['repos'] = repos
