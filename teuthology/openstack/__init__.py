@@ -35,6 +35,7 @@ import teuthology
 import time
 import types
 import yaml
+import base64
 
 from subprocess import CalledProcessError
 
@@ -996,6 +997,9 @@ ssh access           : ssh {identity}{username}@{ip} # logs in /usr/share/nginx/
         #     user_data = os.path.join(os.path.dirname(__file__),
         #                              '../..', self.user_data)
         # template = open(user_data).read()
+        with open(os.path.dirname(__file__) + '/bootstrap-teuthology.sh', 'r') as f:
+            bootstrap_content = cmd_str(f.read().encode('base64'))
+
         openrc = ''
         cacert_cmd = None
         for (var, value) in os.environ.iteritems():
@@ -1018,14 +1022,7 @@ ssh access           : ssh {identity}{username}@{ip} # logs in /usr/share/nginx/
         #     upload = '--archive-upload ' + self.args.archive_upload
         # else:
         #     upload = ''
-        clone = teuth_config.openstack['clone']
         network = OpenStack().get_network()
-        log.debug('Default teuthology clone: %s' % clone)
-        if self.args.teuthology_git_url:
-            clone = "git clone -b {branch} {url}".format(
-                branch=self.args.teuthology_branch,
-                url=self.args.teuthology_git_url)
-            log.debug('Overridden teuthology clone: %s' % clone)
         ceph_workbench = ''
         if self.args.ceph_workbench_git_url:
             ceph_workbench += (" --ceph-workbench-branch " +
@@ -1076,8 +1073,13 @@ ssh access           : ssh {identity}{username}@{ip} # logs in /usr/share/nginx/
 
 
         cmds = [
-            "su - -c '(set -x ; %s && cd teuthology && ./bootstrap install)' "
-            "%s >> /tmp/init.out 2>&1" % (clone, self.username),
+            cmd_str(
+                "su - -c 'bash /tmp/bootstrap-teuthology.sh "
+                "teuthology {url} {branch}' {user} >> "
+                "/tmp/init.out 2>&1".format(
+                    url=self.args.teuthology_git_url,
+                    branch=self.args.teuthology_branch,
+                    user=self.username)),
             #"echo 'export %s' | tee /home/%s/openrc.sh" % (openrc, self.username),
             cmd_str(
                 "su - -c 'cat | tee $HOME/openrc.sh' {user} <<EOF\n"
@@ -1115,6 +1117,14 @@ ssh access           : ssh {identity}{username}@{ip} # logs in /usr/share/nginx/
                 'python-virtualenv',
                 'git',
                 'rsync',
+            ],
+            'write_files': [
+                {
+                    'path': '/tmp/bootstrap-teuthology.sh',
+                    'content': bootstrap_content,
+                    'encoding': 'b64',
+                    'permissions': '0755',
+                },
             ],
             'runcmd': cmds,
             'final_message': 'teuthology is up and running after $UPTIME seconds'
