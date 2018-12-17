@@ -94,7 +94,7 @@ openstack:
   #
   machine:
     disk: 20 # GB
-    ram: 8000 # MB
+    ram: 4000 # MB
     cpus: 1
   volumes:
     count: 0
