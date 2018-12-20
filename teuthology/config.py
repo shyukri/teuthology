@@ -168,7 +168,7 @@ class TeuthologyConfig(YamlConfig):
             'ip': '1.1.1.1',
             'machine': {
                 'disk': 20,
-                'ram': 8000,
+                'ram': 4000,
                 'cpus': 1,
             },
             'volumes': {
