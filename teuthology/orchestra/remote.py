@@ -69,7 +69,7 @@ class Remote(object):
         self.ssh = connection.connect(**args)
         return self.ssh
 
-    def reconnect(self, timeout=None):
+    def reconnect(self, timeout=None, socket_timeout=None, sleep_time=30):
         """
         Attempts to re-establish connection. Returns True for success; False
         for failure.
@@ -77,18 +77,17 @@ class Remote(object):
         if self.ssh is not None:
             self.ssh.close()
         if not timeout:
-            return self._reconnect(timeout=timeout)
+            return self._reconnect(timeout=socket_timeout)
         start_time = time.time()
         elapsed_time = lambda: time.time() - start_time
         while elapsed_time() < timeout:
-            success = self._reconnect()
+            success = self._reconnect(timeout=socket_timeout)
             if success:
                 log.info('Successfully reconnected to host')
                 break
-            default_sleep_val = 30
             # Don't let time_remaining be < 0
             time_remaining = max(0, timeout - elapsed_time())
-            sleep_val = min(time_remaining, default_sleep_val)
+            sleep_val = min(time_remaining, sleep_time)
             time.sleep(sleep_val)
         return success
 
