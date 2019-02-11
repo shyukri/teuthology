@@ -13,21 +13,21 @@ repo_utils.log.setLevel(logging.WARNING)
 
 
 class TestRepoUtils(object):
-    temp_path = tempfile.mkdtemp(prefix='test_repo', dir='/tmp')
-    src_path = temp_path + '/empty_src'
-    # online_repo_url = 'https://github.com/ceph/teuthology.git'
-    # online_repo_url = 'git://ceph.newdream.net/git/teuthology.git'
-    online_repo_url = 'https://github.com/ceph/empty.git'
-    offline_repo_url = 'file://' + src_path
-    repo_url = None
-    dest_path = temp_path + '/empty_dest'
 
     @classmethod
     def setup_class(cls):
+        cls.temp_path = tempfile.mkdtemp(prefix='test_repo-')
+        cls.dest_path = cls.temp_path + '/empty_dest'
+        cls.src_path = cls.temp_path + '/empty_src'
+
         if 'TEST_ONLINE' in os.environ:
-            cls.repo_url = cls.online_repo_url
+            cls.repo_url = 'https://github.com/ceph/empty.git'
         else:
-            cls.repo_url = cls.offline_repo_url
+            cls.repo_url = 'file://' + cls.src_path
+
+    @classmethod
+    def teardown_class(cls):
+        shutil.rmtree(cls.temp_path)
 
     def setup_method(self, method):
         assert not os.path.exists(self.dest_path)
@@ -57,7 +57,7 @@ class TestRepoUtils(object):
         assert proc.wait() == 0
 
     def teardown_method(self, method):
-        shutil.rmtree(self.temp_path, ignore_errors=True)
+        shutil.rmtree(self.dest_path, ignore_errors=True)
 
     def test_clone_repo_existing_branch(self):
         repo_utils.clone_repo(self.repo_url, self.dest_path, 'master')
