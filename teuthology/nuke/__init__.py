@@ -42,7 +42,7 @@ def openstack_volume_name(volume):
     return (volume.get('Display Name') or
             volume.get('display_name') or
             volume.get('Name') or
-            volume.get('name'))
+            volume.get('name') or "")
 
 
 def stale_openstack(ctx):
@@ -166,11 +166,11 @@ def openstack_remove_again():
     xargs --no-run-if-empty --max-args 1 -P20 openstack server delete --wait
     true
     """)
-    volumes = OpenStack().run("volume list -f json --long")
+    volumes = json.loads(OpenStack().run("volume list -f json --long"))
     remove_me = [openstack_volume_id(v) for v in volumes
                  if 'REMOVE-ME' in openstack_volume_name(v)]
     for i in remove_me:
-        log.info("Trying to remove stale volume %i" % i)
+        log.info("Trying to remove stale volume %s" % i)
         openstack_delete_volume(i)
 
 
