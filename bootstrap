@@ -79,7 +79,7 @@ Linux)
 	fi
 	;;
     "openSUSE project"|"SUSE LINUX"|"openSUSE")
-        for package in python-pip python-devel python-virtualenv libev-devel libmysqlclient-devel libffi-devel; do
+        for package in gcc libmysqld-devel zlib-devel python-pip python-devel python-virtualenv libev-devel libmysqlclient-devel libffi-devel; do
             if [ "$(rpm -q $package)" == "package $package is not installed" ]; then
                 if [ "$(rpm -q --whatprovides $package)" == "no package provides $package" ]; then
                     missing="${missing:+$missing }$package"
@@ -127,7 +127,7 @@ if [ -z "$NO_CLOBBER" ] || [ ! -e ./virtualenv ]; then
     if ! which virtualenv > /dev/null; then
         pip install virtualenv
     fi
-    virtualenv --setuptools virtualenv
+    virtualenv --python=python2.7 --setuptools virtualenv
 fi
 
 # Upgrade pip first
