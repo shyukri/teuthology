@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 export LC_ALL=C
 if [ $# -eq 0 ]; then
@@ -14,8 +14,9 @@ fi
 
 case "$(uname -s)" in
 Linux)
-    case "$(lsb_release --id --short)" in
-    Ubuntu|Debian)
+    source /etc/os-release
+    case $ID in
+    debian|ubuntu|devuan)
         for package in qemu-utils python-dev libssl-dev python-pip python-virtualenv libev-dev libvirt-dev libmysqlclient-dev libffi-dev libyaml-dev ; do
             if [ "$(dpkg --status -- $package|sed -n 's/^Status: //p')" != "install ok installed" ]; then
                 # add a space after old values
@@ -35,7 +36,7 @@ Linux)
             fi
         fi
         ;;
-    RedHatEnterpriseWorkstation|RedHatEnterpriseServer)
+    centos|rhel|ol|virtuozzo)
         for package in python-pip python-virtualenv mariadb-devel libev-devel libvirt-devel libffi-devel; do
 	    if [ "$(rpm -q $package)" == "package $package is not installed" ]; then
 		missing="${missing:+$missing }$package"
@@ -54,7 +55,7 @@ Linux)
             fi
 	fi
 	;;
-    Fedora)
+    fedora)
         for package in python-pip python-virtualenv libev-devel libvirt-devel community-mysql-devel libffi-devel; do
 	    if [ "$(rpm -q $package)" == "package $package is not installed" ]; then
 		missing="${missing:+$missing }$package"
@@ -78,8 +79,8 @@ Linux)
             fi
 	fi
 	;;
-    "openSUSE project"|"SUSE LINUX"|"openSUSE")
-        for package in python-pip python-devel python-virtualenv libev-devel libmysqlclient-devel libffi-devel; do
+    opensuse*|suse|sles)
+        for package in gcc libmysqld-devel zlib-devel python-pip python-devel python-virtualenv libev-devel libmysqlclient-devel libffi-devel; do
             if [ "$(rpm -q $package)" == "package $package is not installed" ]; then
                 if [ "$(rpm -q --whatprovides $package)" == "no package provides $package" ]; then
                     missing="${missing:+$missing }$package"
@@ -127,7 +128,7 @@ if [ -z "$NO_CLOBBER" ] || [ ! -e ./virtualenv ]; then
     if ! which virtualenv > /dev/null; then
         pip install virtualenv
     fi
-    virtualenv --setuptools virtualenv
+    virtualenv --python=python2.7 --setuptools virtualenv
 fi
 
 # Upgrade pip first
