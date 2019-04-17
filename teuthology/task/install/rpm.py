@@ -126,7 +126,6 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
     rpm = _package_overrides(rpm, remote_os)
 
     dist_release = remote_os.name
-    dist_major_version = int(str(remote_os.version).split(".")[0])
     log.debug("_update_package_list_and_install: config is {}".format(config))
     repos = config.get('repos')
     install_ceph_packages = config.get('install_ceph_packages')
@@ -151,14 +150,11 @@ def _update_package_list_and_install(ctx, remote, rpm, config):
 
     if not install_ceph_packages:
         log.info("install_ceph_packages set to False: not installing Ceph packages")
-        if dist_release in ['opensuse', 'sle'] and dist_major_version >= 15 and dist_major_version < 42:
-            rpm = ["ceph-test"]
-        else:
-            # Although "librados2" is an indirect dependency of ceph-test, we
-            # install it explicitly because, otherwise, ceph-test cannot be
-            # installed (even with --force) when there are several conflicting
-            # repos from different vendors.
-            rpm = ["librados2", "ceph-test"]
+        # Although "librados2" is an indirect dependency of ceph-test, we
+        # install it separately because, otherwise, ceph-test cannot be
+        # installed (even with --force) when there are several conflicting
+        # repos from different vendors.
+        rpm = ["librados2", "ceph-test"]
 
     # rpm does not force installation of a particular version of the project
     # packages, so we can put extra_system_packages together with the rest
