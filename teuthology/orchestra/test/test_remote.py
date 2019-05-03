@@ -1,6 +1,6 @@
 from mock import patch, Mock, MagicMock
 
-from cStringIO import StringIO
+from io import StringIO
 
 from .. import remote
 from .. import opsys

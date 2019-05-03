@@ -1,7 +1,7 @@
 """
 Paramiko run support
 """
-from cStringIO import StringIO
+from io import StringIO
 from paramiko import ChannelFile
 
 import gevent

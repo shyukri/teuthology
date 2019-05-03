@@ -9,7 +9,7 @@ from teuthology.misc import host_shortname
 import time
 import re
 import logging
-from cStringIO import StringIO
+from io import StringIO
 from teuthology import lockstatus as ls
 from teuthology import lock
 import os
